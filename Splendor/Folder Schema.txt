@@ -1,0 +1,18 @@
+Splendor
+- Environment
+- - game.py
+- - Splendor_components
+- - - Board_components
+- - - - board.py
+- - - - deck.py
+- - - - Splendor_cards.xlsx
+- - - - __init__.py
+- - - Player_components
+- - - - player.py
+- - - - strategy.py
+- - - - __init__.py
+- - - __init__.py
+- RL
+- - env_state_to_input.py
+- - strategy.py
+- - training.py
