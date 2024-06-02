@@ -1,5 +1,6 @@
 # Splendor/Environment/Splendor_components/Board_components/board.py
-from deck import Tier1, Tier2, Tier3, Nobles
+
+from .deck import Deck
 
 
 class Board:
@@ -9,10 +10,10 @@ class Board:
         self.gems = {'white': gems, 'blue': gems, 'green': gems, 'red': gems, 'black': gems, 'gold': 5}
 
         # Decks
-        self.Tier1 = Tier1
-        self.Tier2 = Tier2
-        self.Tier3 = Tier3
-        self.Nobles = Nobles
+        self.Tier1 = Deck('Tier1')
+        self.Tier2 = Deck('Tier2')
+        self.Tier3 = Deck('Tier3')
+        self.Nobles = Deck('Nobles')
 
         # Active cards
         self.cards = {
@@ -28,6 +29,13 @@ class Board:
             'Cards': self.cards
         }
     
+    def to_vector(self):
+        state_vector = list(self.gems.values())
+        for tier in ['tier1', 'tier2', 'tier3', 'nobles']:
+            for card in self.cards[tier]:
+                state_vector.extend(card.to_vector())
+        return state_vector
+    
     def take_gem(self, gem, amount):
         self.gems[gem] -= amount
 
@@ -35,6 +43,12 @@ class Board:
         self.cards[card.tier].remove(card)
         self.cards[card.tier].append(self.tier.pop())
 
-# board = Board(2)
-# state = board.get_state()
-# print(state.keys())
+if __name__ == "__main__":
+    import sys
+
+    sys.path.append("C:/Users/Public/Documents/Python_Files/Splendor")
+
+    from Environment.Splendor_components.Board_components.deck import Deck # type: ignore
+
+    b1 = Board(2)
+    print(b1.to_vector())

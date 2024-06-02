@@ -1,25 +1,26 @@
-# Splendor/Environment/Splendor_components/Player_components folder - strategy.py
+# Splendor/Environment/Splendor_components/Player_components/strategy.py
+
 import numpy as np
 
 
 class BestStrategy():
     """Return the raw moves, as that's what the model chose
     """
-    def strategize(moves):
+    def strategize(game_state, moves, strategy_strength):
         return moves
 
 class RandomStrategy():
-    """Adjusts the logits randomly
+    """Adjust the logits randomly
     """
-    def strategize(moves):
+    def strategize(game_state, moves, strategy_strength):
         noise = np.random.rand(*moves.shape) - 0.5
         return moves + noise
 
-class OffensiveStrategy(Strategy):
-    """Actively looks at other players' states and increases logits of interfering
+class OffensiveStrategy():
+    """Actively look at other players' states and increase interfering logits
     """
-    def strategize(moves):
-        for player in players:
+    def strategize(game_state, moves, strategy_strength):
+        for player in game_state.players:
             pass
             # Increments move choices that align with progress towards resource cards and nobles
             # Only distrupts if taking the gem would limit the other player's options

@@ -1,4 +1,5 @@
 # Splendor/Environment/Splendor_components/Board_components/deck.py
+
 import random
 import pandas as pd
 
@@ -11,6 +12,9 @@ class Card:
         self.points = points
         self.cost = cost  # Dictionary of gem costs
 
+    def to_vector(self):
+        return [self.id, self.points, self.cost['White'], self.cost['Blue'], self.cost['Green'], self.cost['Red'], self.cost['Black']]
+    
     def __repr__(self):
         return f'Card(ID: {self.id}, Gem: {self.gem}, Points: {self.points}, Cost: {self.cost})'
 
@@ -39,10 +43,3 @@ class Deck:
     
     def __repr__(self):
         return f'Deck: {self.tier} with {len(self.cards)} cards remaining'
-
-Tier1 = Deck('Tier1')
-Tier2 = Deck('Tier2')
-Tier3 = Deck('Tier3')
-Nobles = Deck('Nobles')
-
-# print(Tier1)

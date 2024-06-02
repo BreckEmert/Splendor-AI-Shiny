@@ -1,18 +1,24 @@
 Splendor
-- Environment
-- - game.py
-- - Splendor_components
-- - - Board_components
-- - - - board.py
-- - - - deck.py
-- - - - Splendor_cards.xlsx
-- - - - __init__.py
-- - - Player_components
-- - - - player.py
-- - - - strategy.py
-- - - - __init__.py
-- - - __init__.py
-- RL
-- - env_state_to_input.py
-- - strategy.py
-- - training.py
+	run.py
+
+	Environment
+		__init__.py
+		game.py
+
+		Splendor_components
+			__init__.py
+
+			Board_components
+				__init__.py
+				board.py
+				deck.py
+				Splendor_cards.xlsx
+
+			Player_components
+				__init__.py
+				player.py
+				strategy.py
+	RL
+		__init__.py
+		model.py
+		training.py

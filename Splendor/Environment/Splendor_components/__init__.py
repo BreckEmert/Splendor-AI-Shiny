@@ -1,4 +1,10 @@
-from .deck import Tier1, Tier2, Tier3, Nobles
-from .board import Board
-from .player import Player
-from .strategy import RandomStrategy, OffensiveStrategy, ResourceHog, ObliviousStrategy
+# Splendor/Environment/Splendor_components/__init__.py
+
+from .Board_components import (
+    Board, 
+    Deck
+)
+from .Player_components import (
+    Player, 
+    BestStrategy, RandomStrategy, OffensiveStrategy, ResourceHog, ObliviousStrategy
+)
