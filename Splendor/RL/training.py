@@ -6,7 +6,6 @@ from Environment.game import Game # type: ignore
 from Environment.Splendor_components.Player_components.strategy import ( # type: ignore
     BestStrategy, RandomStrategy, OffensiveStrategy, ResourceHog, ObliviousStrategy
 )
-from .model import RLAgent
 
 
 def train_agent(model_save_path):
@@ -14,12 +13,11 @@ def train_agent(model_save_path):
     players = [('Player1', BestStrategy(), 1), ('Player2', BestStrategy(), 1)]
     
     # Initialize the RL agent
-    state_size = 50  # ADJUST LATER
-    action_size = 5  # ADJUST LATER
+    state_size = 263  # ADJUST LATER
     batch_size = 32
 
     # Training loop
-    for episode in range(1000):  # Number of episodes for training
+    for episode in range(1):  # Number of episodes for training
         game = Game(players)  # Reset the game for each episode
         state = np.array(game.to_vector())
         state = np.reshape(state, [1, state_size])
@@ -36,10 +34,10 @@ def train_agent(model_save_path):
                 done = True
 
             # Agent remembers
-            active_player = game.players[game.turn_order - 1]  # Last active player
+            active_player = game.active_player
             active_player.rl_model.remember(
                 state, 
-                active_player.choose_move(game.board, state),  # Chosen move
+                active_player.move_index,  # Chosen move
                 reward, 
                 next_state, 
                 done
@@ -49,7 +47,7 @@ def train_agent(model_save_path):
             state = next_state
 
             if len(active_player.rl_model.memory) > batch_size:
-                active_player.rl_model.replay(batch_size)
+                active_player.rl_model.replay()
 
         # Log the progress
         print(f"Episode {episode+1}/1000 - Reward: {reward}")

@@ -11,17 +11,29 @@ class Card:
         self.gem = gem
         self.points = points
         self.cost = cost  # Dictionary of gem costs
+        self.vector = self.to_vector()  # Vector representation
 
+    def gem_to_one_hot(self, gem):
+        gem_dict = {
+            'white': [1, 0, 0, 0, 0],
+            'blue': [0, 1, 0, 0, 0],
+            'green': [0, 0, 1, 0, 0],
+            'red': [0, 0, 0, 1, 0],
+            'black': [0, 0, 0, 0, 1]}
+        return gem_dict[gem]
+    
     def to_vector(self):
-        return [self.id, self.points, self.cost['White'], self.cost['Blue'], self.cost['Green'], self.cost['Red'], self.cost['Black']]
+        gem_one_hot = self.gem_to_one_hot(self.gem)
+        return gem_one_hot + [self.points, 
+                              self.cost['white'], self.cost['blue'], self.cost['green'], self.cost['red'], self.cost['black']]
     
     def __repr__(self):
         return f'Card(ID: {self.id}, Gem: {self.gem}, Points: {self.points}, Cost: {self.cost})'
 
 
 class Deck:
-    def __init__(self, Tier):
-        self.tier = Tier
+    def __init__(self, tier):
+        self.tier = tier
         self.cards = self.load_deck()
 
     def load_deck(self):
@@ -32,7 +44,7 @@ class Deck:
         for _, row in deck.iterrows():
             id, gem, points, white, blue, green, red, black = row
             cards.append(Card(id = id, tier = self.tier, gem = gem, points = points, 
-                              cost = {'White': white, 'Blue': blue, 'Green': green, 'Red': red, 'Black': black}))
+                              cost = {'white': white, 'blue': blue, 'green': green, 'red': red, 'black': black}))
             
         random.shuffle(cards)
         
@@ -43,3 +55,11 @@ class Deck:
     
     def __repr__(self):
         return f'Deck: {self.tier} with {len(self.cards)} cards remaining'
+    
+
+if __name__ == "__main__":
+    import sys
+
+    sys.path.append("C:/Users/Public/Documents/Python_Files/Splendor")
+
+    tier1 = Deck('nobles')

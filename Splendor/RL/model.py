@@ -6,9 +6,10 @@ from keras.models import load_model
 
 class RLAgent:
     def __init__(self):
-        self.state_size = 158 # Size of state vector
-        self.action_size = 71 # Maximum number of actions
+        self.state_size = 263 # Size of state vector
+        self.action_size = 303 # Maximum number of actions
         self.batch_size = 32
+        self.minibatch_size = 32
         self.memory = deque(maxlen=2000)
         self.gamma = 0.95  # discount rate
         self.epsilon = 1.0  # exploration rate
@@ -29,19 +30,21 @@ class RLAgent:
         model.compile(loss='mse', optimizer=Adam(lr=self.learning_rate))
         return model
 
-    def get_predictions(self, state, legal_moves):
+    def get_predictions(self, state, legal_mask):
         if np.random.rand() <= self.epsilon:
-            return [(move, np.random.rand()) for move in legal_moves]  # Exploration
+            act_values = np.random.rand(self.action_size)  # Exploration
+        else:
+            act_values = self.model.predict(state)[0]  # All actions
 
-        act_values = self.model.predict(state)[0]  # All actions
-        return [(move, act_values[move]) for move in legal_moves]  # Legal moves
-
+        # Apply the legal_mask to the q_values to filter out illegal moves
+        act_values = [act_values[i] if legal_mask[i] == 1 else -np.inf for i in range(len(act_values))]
+        return act_values
 
     def remember(self, state, action, reward, next_state, done):
         self.memory.append((state, action, reward, next_state, done))
 
     def replay(self):
-        minibatch = np.random.choice(len(self.memory), self.batch_size, replace=False)
+        minibatch = np.random.choice(len(self.memory), self.minibatch_size, replace=False)
         for i in minibatch:
             state, action, reward, next_state, done = self.memory[i]
             target = reward
