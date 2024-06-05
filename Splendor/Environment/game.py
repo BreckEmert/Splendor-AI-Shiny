@@ -27,36 +27,60 @@ class Game:
             self.is_final_turn = True
 
         self.turn_order = (self.turn_order + 1) % self.num_players
-
-        print('Active player points:', self.active_player.points)
+        # print('Active player gems:', self.active_player.gems)
+        # print('Active player points:', self.active_player.points)
 
     def apply_move(self, move):
-        print(move)
+        print('move:', move)
         action, details = move
         match action:
             case 'take':
-                gem, amount = list(details.items())[0]
-                self.board.take_gems(gem, amount)
-                self.active_player.take_gems(details)
+                gems_to_take = {gem: -amount for gem, amount in details.items()}
+                self.board.change_gems(gems_to_change = gems_to_take)
+                self.active_player.change_gems(gems_to_change = gems_to_take)
             case 'buy':
-                bought_card = self.board.buy_card(card_id = details)
-                self.active_player.buy_card(bought_card)
+                bought_card = self.board.take_card(card_id = details)
+                self.board.change_gems(bought_card.cost)
+                self.active_player.change_gems(gems_to_change = bought_card.cost)
+                self.active_player.get_bought_card(card = bought_card)
+            case 'buy_with_gold':
+                card_id = details['card_id']
+                bought_card = self.board.take_card(card_id = card_id)
+                self.board.change_gems(bought_card.cost)
+                self.active_player.change_gems(gems_to_change = details['cost'])
+                self.active_player.get_bought_card(card = bought_card)
             case 'buy_reserved':
                 bought_card = next(card for card in self.active_player.reserved_cards if card.id==details)
+                self.board.change_gems(bought_card.cost)
                 self.active_player.reserved_cards.remove(bought_card)
-                self.active_player.buy_card(bought_card)
+                self.active_player.change_gems(gems_to_change = bought_card.cost)
+                self.active_player.get_bought_card(card = bought_card)
             case 'reserve':
                 reserved_card = self.board.reserve(card_id = details)
+                self.board.change_gems(reserved_card.cost)
                 self.active_player.reserve_card(reserved_card)
+                if self.board.gems['gold'] > 0:
+                    self.board.gems['gold'] -= 1
+                    self.active_player.gems['gold'] += 1
             case 'reserve_top':
                 reserved_card = self.board.reserve_from_deck(tier = details)
+                self.board.change_gems(reserved_card.cost)
                 self.active_player.reserve_card(reserved_card)
+                if self.board.gems['gold'] > 0:
+                    self.board.gems['gold'] -= 1
+                    self.active_player.gems['gold'] += 1
 
     def check_noble_visit(self):
         for noble in self.board.cards['nobles']:
             if all(self.active_player.cards[gem] >= amount for gem, amount in noble.cost.items()):
                 self.active_player.points += noble.points
-                self.Board.deck.remove(noble)
+                self.board.cards['nobles'].remove(noble)
+
+                # Append fake noble to maintain state size
+                fake_noble = noble
+                fake_noble.cost = {'white': 99}
+                self.board.cards['nobles'].append(fake_noble)
+                # Or just add logic to line the noble up with what gems the player doesn't have
                 break # Implement logic to choose the noble if tied
 
     def get_victor(self):

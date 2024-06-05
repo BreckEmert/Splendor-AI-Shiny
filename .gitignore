@@ -1,2 +1,5 @@
 
 *.pyc
+/Splendor/RL/Trained Agents
+/Splendor/Environment/Splendor_components/Board_components/__pycache__
+/Splendor/meta

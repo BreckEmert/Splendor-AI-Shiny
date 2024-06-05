@@ -9,5 +9,5 @@ if __name__ == "__main__":
 
     from RL import train_agent
 
-    model_save_path = 'rl_agent_model.keras'
+    model_save_path = 'RL/Trained Agents/rl_agent_model.keras'
     train_agent(model_save_path)

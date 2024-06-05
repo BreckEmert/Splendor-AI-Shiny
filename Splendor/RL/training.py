@@ -9,15 +9,14 @@ from Environment.Splendor_components.Player_components.strategy import ( # type:
 
 
 def train_agent(model_save_path):
-    # Define the players and their strategies
+    # Players and strategies (BestStrategy for training perfectly)
     players = [('Player1', BestStrategy(), 1), ('Player2', BestStrategy(), 1)]
     
-    # Initialize the RL agent
     state_size = 263  # ADJUST LATER
     batch_size = 32
 
     # Training loop
-    for episode in range(1):  # Number of episodes for training
+    for episode in range(1000):  # Number of episodes for training
         game = Game(players)  # Reset the game for each episode
         state = np.array(game.to_vector())
         state = np.reshape(state, [1, state_size])
@@ -50,9 +49,9 @@ def train_agent(model_save_path):
                 active_player.rl_model.replay()
 
         # Log the progress
-        print(f"Episode {episode+1}/1000 - Reward: {reward}")
+        print(f"Episode {episode+1}/1000")
 
-    # Save the trained model
+    # Save models
     for player in game.players:
         player.rl_model.save_model(f"{model_save_path}_{player.name}")
 
