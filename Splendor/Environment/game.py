@@ -26,7 +26,7 @@ class Game:
 
         self.reward = 0
         self.active_player = self.players[self.turn_order]
-        prev_state = self.get_state()
+        prev_state = self.to_vector()
 
         chosen_move = self.active_player.choose_move(self.board, prev_state)
         self.apply_move(chosen_move)
@@ -38,12 +38,12 @@ class Game:
         self.turn_order = (self.turn_order + 1) % self.num_players
 
     def apply_move(self, move):
+        print(move)
         action, details = move
         match action:
             case 'take':
-                gems_to_take = {gem: -amount for gem, amount in details.items()}
-                self.board.change_gems(gems_to_change = gems_to_take)
-                self.active_player.change_gems(gems_to_change = gems_to_take)
+                self.board.change_gems({gem: amount for gem, amount in details.items()})
+                self.active_player.change_gems({gem: amount for gem, amount in details.items()})
             case 'buy':
                 bought_card = self.board.take_card(card_id = details)
                 self.board.change_gems(bought_card.cost)
@@ -63,19 +63,13 @@ class Game:
                 self.active_player.change_gems(gems_to_change = bought_card.cost)
                 self.active_player.get_bought_card(card = bought_card)
             case 'reserve':
-                reserved_card = self.board.reserve(card_id = details)
-                self.board.change_gems(reserved_card.cost)
+                reserved_card, gold = self.board.reserve(card_id = details)
                 self.active_player.reserve_card(reserved_card)
-                if self.board.gems['gold'] > 0:
-                    self.board.gems['gold'] -= 1
-                    self.active_player.gems['gold'] += 1
+                self.active_player.gems['gold'] += gold
             case 'reserve_top':
-                reserved_card = self.board.reserve_from_deck(tier = details)
-                self.board.change_gems(reserved_card.cost)
+                reserved_card, gold = self.board.reserve_from_deck(tier = details)
                 self.active_player.reserve_card(reserved_card)
-                if self.board.gems['gold'] > 0:
-                    self.board.gems['gold'] -= 1
-                    self.active_player.gems['gold'] += 1
+                self.active_player.gems['gold'] += gold
 
     def check_noble_visit(self):
         for noble in self.board.cards['nobles']:

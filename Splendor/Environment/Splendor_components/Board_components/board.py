@@ -6,7 +6,7 @@ from .deck import Deck
 class Board:
     def __init__(self, num_players):
         # Gems
-        gems = 4 + num_players//3
+        gems = 7 - (5-num_players)
         self.gems = {'white': gems, 'blue': gems, 'green': gems, 'red': gems, 'black': gems, 'gold': 5}
 
         # Decks
@@ -46,22 +46,26 @@ class Board:
     
     def reserve(self, card_id):
         # Give gold if available
+        gold = 0
         if self.gems['gold']:
             self.gems['gold'] -= 1
+            gold = 1
 
         # Remove card
         card = self.get_card_by_id(card_id)
         self.cards[card.tier].remove(card)
         self.cards[card.tier].append(self.deck_mapping[card.tier].draw())
-        return card
+        return card, gold
     
     def reserve_from_deck(self, tier):
         # Give gold if available
+        gold = 0
         if self.gems['gold']:
             self.gems['gold'] -= 1
+            gold = 1
 
         # Remove card
-        return self.deck_mapping[tier].draw()
+        return self.deck_mapping[tier].draw(), gold
     
     def get_state(self):
         return {

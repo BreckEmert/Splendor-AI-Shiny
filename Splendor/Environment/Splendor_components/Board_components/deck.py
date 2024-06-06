@@ -58,10 +58,7 @@ class Deck:
     def draw(self):
         return self.cards.pop() if self.cards else None
     
-    def __repr__(self):
-        return f'Deck: {self.tier} with {len(self.cards)} cards remaining'
     
-
 if __name__ == "__main__":
     import sys
 
