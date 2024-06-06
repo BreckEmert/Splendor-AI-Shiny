@@ -1,5 +1,6 @@
 # Splendor/Environment/game.py
 
+
 from Environment.Splendor_components import Board # type: ignore
 from Environment.Splendor_components import Player # type: ignore
 
@@ -11,11 +12,19 @@ class Game:
         self.players: list = [Player(name, strategy, strategy_strength) 
                               for name, strategy, strategy_strength in players]
 
+        self.reward = 0
         self.active_player = 0
         self.turn_order: int = 0
         self.is_final_turn: bool = False
+        self.victor = 0
     
     def turn(self):
+        if self.is_final_turn:
+            self.reward += 10
+            self.victor = self.get_victor()
+            self.active_player.victor = True
+
+        self.reward = 0
         self.active_player = self.players[self.turn_order]
         prev_state = self.get_state()
 
@@ -27,11 +36,8 @@ class Game:
             self.is_final_turn = True
 
         self.turn_order = (self.turn_order + 1) % self.num_players
-        # print('Active player gems:', self.active_player.gems)
-        # print('Active player points:', self.active_player.points)
 
     def apply_move(self, move):
-        print('move:', move)
         action, details = move
         match action:
             case 'take':
@@ -43,6 +49,7 @@ class Game:
                 self.board.change_gems(bought_card.cost)
                 self.active_player.change_gems(gems_to_change = bought_card.cost)
                 self.active_player.get_bought_card(card = bought_card)
+                self.reward += bought_card. points
             case 'buy_with_gold':
                 card_id = details['card_id']
                 bought_card = self.board.take_card(card_id = card_id)
@@ -73,6 +80,7 @@ class Game:
     def check_noble_visit(self):
         for noble in self.board.cards['nobles']:
             if all(self.active_player.cards[gem] >= amount for gem, amount in noble.cost.items()):
+                self.reward += noble.points
                 self.active_player.points += noble.points
                 self.board.cards['nobles'].remove(noble)
 
@@ -90,8 +98,8 @@ class Game:
     def get_state(self):
         return {
             'board': self.board.get_state(),
-            'players': {player.name: player.get_state() for player in self.players}, 
-            'current_turn': self.turn, 
+            'players': {player.name: player.get_state() for player in self.players},
+            'current_turn': self.turn_order,
             'is_final_turn': self.is_final_turn
         }
 
@@ -102,20 +110,3 @@ class Game:
         state_vector.append(self.turn_order)
         state_vector.append(int(self.is_final_turn))
         return state_vector
-
-if __name__ == "__main__":
-    import sys
-
-    sys.path.append("C:/Users/Public/Documents/Python_Files/Splendor")
-
-    from Environment.Splendor_components import Board # type: ignore
-    from Environment.Splendor_components import Player # type: ignore
-    from Environment.Splendor_components.Player_components.strategy import BestStrategy # type: ignore
-
-    players = [('Player1', BestStrategy(), 1), ('Player2', BestStrategy(), 1)]
-    game = Game(players)
-    done = False
-    while not done:
-        game.turn()
-        if game.is_final_turn:
-            done = True

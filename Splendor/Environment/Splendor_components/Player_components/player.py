@@ -14,7 +14,10 @@ class Player:
         self.reserved_cards: list = []
         self.points: int = 0
 
+        self.cards_state = {'tier1': [], 'tier2': [], 'tier3': []}
+        self.cards_state = {gem: {'tier1': [], 'tier2': [], 'tier3': []} for gem in self.cards}
         self.rl_model = RLAgent()
+        self.victor = False
         #self.strategy: strategy = strategy
         #self.strategy_strength: int = strategy_strength
     
@@ -25,6 +28,7 @@ class Player:
     def get_bought_card(self, card):
         self.cards[card.gem] += 1
         self.points += card.points
+        self.cards_state[card.gem][card.tier].append(card.id)
 
     def reserve_card(self, card):
         self.reserved_cards.append(card)
@@ -261,11 +265,14 @@ class Player:
         return chosen_move
     
     def get_state(self):
+        reserved_cards_state = {'tier1': [], 'tier2': [], 'tier3': []}
+        for card in self.reserved_cards:
+            reserved_cards_state[f'{card.tier}'].append(card.id)
         return {
-            'gems': self.gems, 
-            'cards': self.cards, 
-            'reserved_cards': self.reserved_cards, 
-            'points:': self.points
+            'gems': self.gems,
+            'cards': self.cards_state,
+            'reserved_cards': reserved_cards_state,
+            'points': self.points
         }
 
     def to_vector(self):
