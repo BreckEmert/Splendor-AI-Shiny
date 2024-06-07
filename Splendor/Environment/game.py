@@ -9,23 +9,22 @@ class Game:
         self.num_players = len(players)
 
         self.board = Board(self.num_players)
-        self.players: list = [Player(name, strategy, strategy_strength) 
-                              for name, strategy, strategy_strength in players]
+        self.players: list = [Player(name, strategy, strategy_strength, layer_sizes, model_path) 
+                              for name, strategy, strategy_strength, layer_sizes, model_path in players]
 
         self.reward = 0
         self.active_player = 0
-        self.turn_order: int = 0
+        self.half_turns: int = 0
         self.is_final_turn: bool = False
         self.victor = 0
     
     def turn(self):
         if self.is_final_turn:
-            self.reward += 10
             self.victor = self.get_victor()
             self.active_player.victor = True
 
         self.reward = 0
-        self.active_player = self.players[self.turn_order]
+        self.active_player = self.players[(self.half_turns + 1) % self.num_players]
         prev_state = self.to_vector()
 
         chosen_move = self.active_player.choose_move(self.board, prev_state)
@@ -35,15 +34,15 @@ class Game:
         if self.active_player.points >= 15:
             self.is_final_turn = True
 
-        self.turn_order = (self.turn_order + 1) % self.num_players
+        self.half_turns += 1
 
     def apply_move(self, move):
-        print(move)
         action, details = move
         match action:
             case 'take':
                 self.board.change_gems({gem: amount for gem, amount in details.items()})
                 self.active_player.change_gems({gem: amount for gem, amount in details.items()})
+                self.reward -= 1
             case 'buy':
                 bought_card = self.board.take_card(card_id = details)
                 self.board.change_gems(bought_card.cost)
@@ -77,12 +76,6 @@ class Game:
                 self.reward += noble.points
                 self.active_player.points += noble.points
                 self.board.cards['nobles'].remove(noble)
-
-                # Append fake noble to maintain state size
-                fake_noble = noble
-                fake_noble.cost = {'white': 99}
-                self.board.cards['nobles'].append(fake_noble)
-                # Or just add logic to line the noble up with what gems the player doesn't have
                 break # Implement logic to choose the noble if tied
 
     def get_victor(self):
@@ -93,14 +86,12 @@ class Game:
         return {
             'board': self.board.get_state(),
             'players': {player.name: player.get_state() for player in self.players},
-            'current_turn': self.turn_order,
-            'is_final_turn': self.is_final_turn
+            'current_half_turn': self.half_turns
         }
 
     def to_vector(self):
         state_vector = self.board.to_vector()
         for player in self.players:
             state_vector.extend(player.to_vector())
-        state_vector.append(self.turn_order)
         state_vector.append(int(self.is_final_turn))
         return state_vector

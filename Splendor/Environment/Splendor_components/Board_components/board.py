@@ -15,6 +15,8 @@ class Board:
         self.tier2 = Deck('tier2')
         self.tier1 = Deck('tier1')
 
+        self.taken_cards = 0
+
         self.deck_mapping = {
             'tier1': self.tier1,
             'tier2': self.tier2,
@@ -41,7 +43,9 @@ class Board:
     def take_card(self, card_id):
         card = self.get_card_by_id(card_id)
         self.cards[card.tier].remove(card)
-        self.cards[card.tier].append(self.deck_mapping[card.tier].draw())
+        new_card = self.deck_mapping[card.tier].draw()
+        if new_card:
+            self.cards[card.tier].append(new_card)
         return card
     
     def reserve(self, card_id):
@@ -51,10 +55,12 @@ class Board:
             self.gems['gold'] -= 1
             gold = 1
 
-        # Remove card
+        # Replace card
         card = self.get_card_by_id(card_id)
         self.cards[card.tier].remove(card)
-        self.cards[card.tier].append(self.deck_mapping[card.tier].draw())
+        new_card = self.deck_mapping[card.tier].draw()
+        if new_card:
+            self.cards[card.tier].append(new_card)
         return card, gold
     
     def reserve_from_deck(self, tier):
@@ -75,12 +81,23 @@ class Board:
                 for tier, cards in self.cards.items()
             }
         }
-    
+        
     def to_vector(self):
         state_vector = list(self.gems.values())
-        for tier in ['tier1', 'tier2', 'tier3', 'nobles']:
+
+        for tier in ['tier1', 'tier2', 'tier3']:
+            tier_vector = []
             for card in self.cards[tier]:
-                state_vector.extend(card.vector)
+                tier_vector.extend(card.vector)
+            tier_vector += [0] * (11 * (4 - len(self.cards[tier])))
+            state_vector.extend(tier_vector)
+            
+        nobles_vector = []
+        for card in self.cards['nobles']:
+            nobles_vector += [card.points] + list(card.cost.values())
+        nobles_vector += [0] * (6 * (3 - len(self.cards['nobles'])))
+        state_vector.extend(nobles_vector)
+
         return state_vector
 
 

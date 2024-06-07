@@ -8,7 +8,7 @@ from RL import RLAgent # type: ignore
 
 
 class Player:
-    def __init__(self, name, strategy, strategy_strength):
+    def __init__(self, name, strategy, strategy_strength, layer_sizes, model_path=None):
         self.name: str = name
         self.gems: dict = {'white': 0, 'blue': 0, 'green': 0, 'red': 0, 'black': 0, 'gold': 0}
         self.cards: dict = {'white': 0, 'blue': 0, 'green': 0, 'red': 0, 'black': 0}
@@ -17,7 +17,7 @@ class Player:
 
         self.cards_state = {'tier1': [], 'tier2': [], 'tier3': []}
         self.cards_state = {gem: {'tier1': [], 'tier2': [], 'tier3': []} for gem in self.cards}
-        self.rl_model = RLAgent()
+        self.rl_model = RLAgent(layer_sizes, model_path)
         self.victor = False
         #self.strategy: strategy = strategy
         #self.strategy_strength: int = strategy_strength
@@ -93,7 +93,8 @@ class Player:
             for tier in ['tier1', 'tier2', 'tier3']:
                 for card in board_cards[tier]:
                     legal_moves.append(('reserve', card.id))
-                legal_moves.append(('reserve_top', tier))  # Reserve unknown top of decks
+                if len(board.deck_mapping[tier]):
+                    legal_moves.append(('reserve_top', tier))  # Reserve unknown top of decks
 
         # Buy card
         for tier in ['tier1', 'tier2', 'tier3']:
@@ -284,7 +285,7 @@ class Player:
     def to_vector(self):
         reserved_cards_vector = []
         for card in self.reserved_cards:
-            reserved_cards_vector.extend(card.to_vector())
+            reserved_cards_vector.extend(card.vector)
         reserved_cards_vector += [0] * (11 * (3-len(self.reserved_cards)))
         return (
             list(self.gems.values()) + 
