@@ -28,6 +28,7 @@ class Game:
         prev_state = self.to_vector()
 
         chosen_move = self.active_player.choose_move(self.board, prev_state)
+        print(self.half_turns, chosen_move)
         self.apply_move(chosen_move)
 
         self.check_noble_visit()
@@ -46,21 +47,21 @@ class Game:
             case 'buy':
                 bought_card = self.board.take_card(card_id = details)
                 self.board.change_gems(bought_card.cost)
-                self.active_player.change_gems(gems_to_change = bought_card.cost)
-                self.active_player.get_bought_card(card = bought_card)
+                self.active_player.change_gems(bought_card.cost)
+                self.active_player.get_bought_card(bought_card)
                 self.reward += bought_card. points
             case 'buy_with_gold':
                 card_id = details['card_id']
-                bought_card = self.board.take_card(card_id = card_id)
-                self.board.change_gems(bought_card.cost)
-                self.active_player.change_gems(gems_to_change = details['cost'])
-                self.active_player.get_bought_card(card = bought_card)
+                bought_card = self.board.take_card(card_id)
+                self.board.change_gems(details['cost'])
+                self.active_player.change_gems(details['cost'])
+                self.active_player.get_bought_card(bought_card)
             case 'buy_reserved':
                 bought_card = next(card for card in self.active_player.reserved_cards if card.id==details)
                 self.board.change_gems(bought_card.cost)
                 self.active_player.reserved_cards.remove(bought_card)
-                self.active_player.change_gems(gems_to_change = bought_card.cost)
-                self.active_player.get_bought_card(card = bought_card)
+                self.active_player.change_gems(bought_card.cost)
+                self.active_player.get_bought_card(bought_card)
             case 'reserve':
                 reserved_card, gold = self.board.reserve(card_id = details)
                 self.active_player.reserve_card(reserved_card)

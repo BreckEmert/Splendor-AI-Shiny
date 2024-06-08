@@ -14,7 +14,7 @@ class RLAgent:
         self.epsilon = 0.5  # exploration rate
         self.epsilon_min = 0.01
         self.epsilon_decay = 0.995
-        self.learning_rate = 0.001
+        self.learning_rate = 0.0001
 
         self.layer_sizes = layer_sizes
         if model_path:
@@ -51,15 +51,17 @@ class RLAgent:
         self.memory.append((state, action, reward, next_state, done))
 
     def replay(self):
-        minibatch = np.random.choice(len(self.memory), len(self.memory), replace=False)
+        minibatch = np.random.choice(len(self.memory), len(self.memory)//2, replace=False)
         for i in minibatch:
             state, action, reward, next_state, done = self.memory[i]
-            target_f = self.model.predict(state, verbose=0)
-            target_f[0][action] = reward
-            if not done:
-                target = reward + self.gamma * np.amax(self.model.predict(next_state, verbose=0)[0])
-                target_f[0][action] = target
-            self.model.fit(state, target_f, epochs=1, verbose=0)
+            target = self.model.predict(state, verbose=0)
+            if done:
+                target[0][action] = reward
+            else:
+                t = self.model.predict(next_state, verbose=0)[0]
+                target[0][action] = reward + self.gamma * np.amax(t)
+            # print(f'replay fit, reward = {reward}')
+            self.model.fit(state, target, epochs=1, verbose=0)
 
     def train(self, state, action, reward, next_state, done):
         target_f = self.model.predict(state, verbose=0)
@@ -67,6 +69,7 @@ class RLAgent:
         if not done:
             target = reward + self.gamma * np.amax(self.model.predict(next_state, verbose=0)[0])
             target_f[0][action] = target
+        # print(f'training fit, reward = {reward}')
         self.model.fit(state, target_f, epochs=1, verbose=0)
 
     def save_model(self, model_dir, player_name):

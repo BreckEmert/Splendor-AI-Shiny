@@ -48,6 +48,7 @@ class Player:
         combinations_3 = list(combinations(non_zero_board_gems, 3))
         combinations_2 = list(combinations(non_zero_board_gems, 2))
 
+        #region Take gems
         # Take 3 different gems
         num_discards = (total_gems + 3) - 10
         for combo in combinations_3:
@@ -87,6 +88,7 @@ class Player:
             legal_moves += self.handle_discards(take_1, non_zero_player_gems, num_discards)
         else:
             legal_moves += take_1
+        #endregion
 
         # Reserve card
         if len(self.reserved_cards) < 3:

@@ -21,7 +21,7 @@ def train_agent(base_save_path, log_path, layer_sizes, model_paths=None):
     state_size = 247  # ADJUST LATER
 
     # Training loop
-    for episode in range(20):  # Number of games
+    for episode in range(1):  # Number of games
         logging = False
         game = Game(players)
         state = np.array(game.to_vector())
@@ -62,9 +62,9 @@ def train_agent(base_save_path, log_path, layer_sizes, model_paths=None):
             for state, action, reward, next_state, done in reversed(player.rl_model.memory):
                 player.rl_model.train(state, action, final_reward, next_state, done)
 
-        # Decay epsilon
-        if player.rl_model.epsilon > player.rl_model.epsilon_min:
-            player.rl_model.epsilon *= player.rl_model.epsilon_decay
+            # Decay epsilon
+            if player.rl_model.epsilon > player.rl_model.epsilon_min:
+                player.rl_model.epsilon *= player.rl_model.epsilon_decay
 
         # Log the progress
         print(f"Episode {episode+1} complete and took {game.half_turns} turns")
