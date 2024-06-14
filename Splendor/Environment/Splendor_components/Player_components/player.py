@@ -1,266 +1,266 @@
 # Splendor/Environment/Splendor_components/player.py
 
-
-from collections import defaultdict
 from itertools import combinations
 import numpy as np
-from RL import RLAgent # type: ignore
 
 
 class Player:
-    def __init__(self, name, strategy, strategy_strength, layer_sizes, model_path=None):
+    def __init__(self, name, strategy, strategy_strength, rl_model, turn_order_index):
         self.name: str = name
-        self.gems: dict = {'white': 0, 'blue': 0, 'green': 0, 'red': 0, 'black': 0, 'gold': 0}
-        self.cards: dict = {'white': 0, 'blue': 0, 'green': 0, 'red': 0, 'black': 0}
+        self.turn_order_index = turn_order_index # Unused
+        self.state_offset = 156 + 45*turn_order_index
+
+        self.gems: np.ndarray = np.zeros(6, dtype=int)
+        self.cards: np.ndarray = np.zeros(5, dtype=int)
         self.reserved_cards: list = []
         self.points: int = 0
 
-        self.cards_state = {'tier1': [], 'tier2': [], 'tier3': []}
-        self.cards_state = {gem: {'tier1': [], 'tier2': [], 'tier3': []} for gem in self.cards}
-        self.rl_model = RLAgent(layer_sizes, model_path)
+        self.card_ids = [[[], [], [], [], []], [[], [], [], [], []], [[], [], [], [], []], [[], [], [], [], []]]
+        self.rl_model = rl_model
+        self.entered_loop = False
         self.victor = False
         #self.strategy: strategy = strategy
         #self.strategy_strength: int = strategy_strength
     
-    def change_gems(self, gems_to_change):
-        for gem, amount in gems_to_change.items():
-            self.gems[gem] -= amount
+    def take_or_spend_gems(self, gems_to_change):
+        self.gems += np.pad(gems_to_change, (0, 6-len(gems_to_change)))
+        assert np.all(self.gems >= 0), "player changed gems to less than 0"
+        assert np.sum(self.gems) < 11, "player changed gems to more than 10"
 
     def get_bought_card(self, card):
         self.cards[card.gem] += 1
         self.points += card.points
-        self.cards_state[card.gem][card.tier].append(card.id)
+        self.card_ids[card.tier][card.gem].append(card.id)
 
-    def reserve_card(self, card):
-        self.reserved_cards.append(card)
+    def take_tokens_loop(self, game_state):
+        print(self.gems, game_state[:5])
+        total_gems = sum(self.gems)
+        chosen_gems = np.zeros(5, dtype=int)
+
+        takes_remaining = 3
+        required_discards = max(0, total_gems - 7)
+        legal_selection = game_state[:5]
+
+        while takes_remaining and np.any(legal_selection):
+            # Discard if required
+            if total_gems == 10:
+                # Set legal mask to only legal discards
+                legal_mask = np.zeros(61, dtype=int)
+                legal_mask[10:15] = game_state[self.state_offset:self.state_offset+5].astype(bool).astype(int) # Based on player's gems
+                assert sum(legal_mask) > 1, "not enough legal moves in take tokens loop - discard"
+
+                # Call the model to choose a discard
+                rl_moves = self.rl_model.get_predictions(game_state, legal_mask)
+                move_index = np.argmax(rl_moves)
+                gem_index = move_index - 10
+
+                next_state = game_state.copy()
+                next_state[gem_index] += 1  # Update board's gems
+                next_state[gem_index + self.state_offset] -= 1  # Update player's gems
+                self.rl_model.remember(game_state, move_index, -1, next_state, 0) # Negative reward for inefficient move
+
+                # Implement move
+                total_gems -= 1
+                required_discards -= 1
+                chosen_gems[gem_index] -= 1 # Update for apply_move()?
+                legal_selection[gem_index] += 1 # Taking a second of the same gem is now legal
+                game_state = next_state.copy()
+            
+            # Set legal mask to only legal takes
+            legal_mask = np.zeros(61, dtype=int)
+            legal_mask[:5] = (legal_selection > 0).astype(int)
+            assert sum(legal_mask) > 0, "no legal moves in take tokens loop - take"
+
+            # Call the model to choose a take
+            rl_moves = self.rl_model.get_predictions(game_state, legal_mask)
+            move_index = np.argmax(rl_moves)
+
+            next_state = game_state.copy()
+            next_state[move_index] -= 1 # Update board's gems
+            next_state[move_index+self.state_offset] += 1 # Update player's gems
+            reward = -1 if takes_remaining == 3 else 0
+            self.rl_model.remember(game_state, move_index, reward, next_state, 0)
+            
+            # Implement move
+            total_gems += 1
+            takes_remaining -= 1
+            chosen_gems[move_index] += 1
+            legal_selection[move_index] *= 0 # Taking this gem again is now illegal unless previously discarded
+            game_state = next_state.copy()
+
+        return chosen_gems
+
+    def buy_with_gold_loop(self, game_state, move_index, card):
+        # Model remembers selecting the move and the reward first
+        self.rl_model.remember(game_state, move_index, card.points, game_state, 0) # Same state for now
+
+        chosen_gems = np.zeros(6, dtype=int)
+        legal_mask = np.zeros(61, dtype=int) # Action vector size
+        cost = np.append(card.cost, 0)
+
+        while sum(cost) > 0:
+            gems = self.gems + chosen_gems # Update the player's gems to a local variable
+
+            # Legal tokens to spend
+            legal_mask[10:15] = (gems*cost != 0).astype(int)[:5] # Can only spend gems where card cost remains
+            legal_mask[60] = 1 if gems[5] else 0 # Enable spending gold as a legal move
+            assert sum(legal_mask) > 0, "no legal moves in buy w/gold loop"
+
+            # Predict token to spend
+            rl_moves = self.rl_model.get_predictions(game_state, legal_mask)
+            move_index = np.argmax(rl_moves)
+            gem_index = 5 if move_index == 60 else move_index-10
+
+            # Remember
+            next_state = game_state.copy()
+            next_state[gem_index] += 1 # Board gains the gem
+            next_state[gem_index+self.state_offset] -= 1 # Player spends the gem
+            self.rl_model.remember(game_state, move_index, 0, next_state, 0)
+
+            # Propagate move
+            chosen_gems[gem_index] -= 1
+            cost[gem_index] -= 1
+            game_state = next_state
+
+        return chosen_gems
 
     def get_legal_moves(self, board):
-        board_gems = board.gems
-        board_cards = board.cards
-        non_zero_board_gems = [gem for gem in board_gems if gem != 'gold' and board_gems[gem] > 0]
-        non_zero_player_gems = [gem for gem in self.gems if gem != 'gold' and self.gems[gem] > 0]
-        total_gems = sum(self.gems.values())
-        take_2_count = take_3_count = 0
-        take_1 = take_2 = take_2_diff = take_3 = []
         legal_moves = []
 
-        # Precompute combinations
-        combinations_3 = list(combinations(non_zero_board_gems, 3))
-        combinations_2 = list(combinations(non_zero_board_gems, 2))
-
-        #region Take gems
-        # Take 3 different gems
-        num_discards = (total_gems + 3) - 10
-        for combo in combinations_3:
-            take_3.append(('take', {combo[0]: -1, combo[1]: -1, combo[2]: -1}))
-        if num_discards > 0:
-            legal_moves += self.handle_discards(take_3, non_zero_player_gems, num_discards)
+        # Take gems
+        if sum(self.gems) <= 8: # We actually can take 2 if more than 8 but will need discard
+            for gem, amount in enumerate(board.gems[:5]):
+                if amount >= 4:
+                    legal_moves.append(('take', (gem, 2)))
         else:
-            legal_moves += take_3
-
-        # Take 2 of the same gem if at least 4 available
-        num_discards -= 1
-        for gem, count in board_gems.items():
-            if gem != 'gold' and count >= 4:
-                take_2.append(('take', {gem: -2}))
-        if num_discards > 0:
-            legal_moves += self.handle_discards(take_2, non_zero_player_gems, num_discards)
-        else:
-            legal_moves += take_2
-
-        # Take 2 different gems if no legal take 3s
-        if take_3_count == 0:
-            for combo in combinations_2:
-                take_2_diff.append(('take', {combo[0]: -1, combo[1]: -1}))
-                take_2_count += 1
-        if num_discards > 0:
-            legal_moves += self.handle_discards(take_2_diff, non_zero_player_gems, num_discards)
-        else:
-            legal_moves += take_2_diff
-
-        # Take 1 gem if no legal takes
-        num_discards -= 1
-        if take_2_count == 0:
-            for gem, count in board_gems.items():
-                if gem != 'gold' and count > 0:
-                    take_1.append(('take', {gem: -1}))
-        if num_discards > 0:
-            legal_moves += self.handle_discards(take_1, non_zero_player_gems, num_discards)
-        else:
-            legal_moves += take_1
-        #endregion
+            legal_moves.append(('take', (0, 1))) # Random of the 5 moves because right now it gets overriden
 
         # Reserve card
         if len(self.reserved_cards) < 3:
-            for tier in ['tier1', 'tier2', 'tier3']:
-                for card in board_cards[tier]:
-                    legal_moves.append(('reserve', card.id))
-                if len(board.deck_mapping[tier]):
-                    legal_moves.append(('reserve_top', tier))  # Reserve unknown top of decks
-
+            for tier_index, tier in enumerate(board.cards[:3]):
+                for card_index, card in enumerate(tier):
+                    if card:
+                        legal_moves.append(('reserve', (tier_index, card_index)))
+                if board.deck_mapping[tier_index].cards:
+                    legal_moves.append(('reserve top', (tier_index, None))) # Setting card_index to None because it shouldn't be needed
+        
         # Buy card
-        for tier in ['tier1', 'tier2', 'tier3']:
-            for card in board_cards[tier]:
-                can_afford = True
-                gold_needed = 0
-                gold_combinations = []
+        for tier_index, tier in enumerate(board.cards[:3]):
+            for card_index, card in enumerate(tier):
+                if card:
+                    can_afford = can_afford_with_gold = True
+                    gold_needed = 0
 
-                for gem, amount in card.cost.items():
-                    if self.gems[gem] < amount:
-                        gold_needed += amount - self.gems[gem]
-                        gold_combinations.append((gem, amount - self.gems[gem]))
-                        if gold_needed > self.gems['gold']:
+                    for gem_index, amount in enumerate(card.cost):
+                        if self.gems[gem_index] < amount:
                             can_afford = False
-                            break
+                            gold_needed += amount - self.gems[gem_index]
+                            if gold_needed > self.gems[5]:
+                                can_afford_with_gold = False
+                                break
 
-                if can_afford:
-                    legal_moves.append(('buy', card.id))
-                    if gold_combinations:
-                        for comb in combinations(gold_combinations, min(gold_needed, len(gold_combinations))):
-                            comb_dict = {gem: gold_amount for gem, gold_amount in comb}
-                            total_cost = {gem: card.cost[gem] for gem in card.cost}
-                            for gem, amount in comb_dict.items():
-                                total_cost[gem] = total_cost.get(gem, 0) - amount
-                            total_cost['gold'] = gold_needed
-                            legal_moves.append(('buy_with_gold', {'card_id': card.id, 'cost': total_cost}))
+                    if can_afford:
+                        legal_moves.append(('buy', (tier_index, card_index)))
+                    elif can_afford_with_gold:
+                        legal_moves.append(('buy with gold', (tier_index, card_index)))
 
         # Buy reserved card
-        for card in self.reserved_cards:
-            can_afford = True
+        for card_index, card in enumerate(self.reserved_cards):
+            can_afford = can_afford_with_gold = True
             gold_needed = 0
-            gold_combinations = []
 
-            for gem, amount in card.cost.items():
-                if self.gems[gem] < amount:
-                    gold_needed += amount - self.gems[gem]
-                    gold_combinations.append((gem, amount - self.gems[gem]))
-                    if gold_needed > self.gems['gold']:
-                        can_afford = False
+            for gem_index, amount in enumerate(card.cost):
+                if self.gems[gem_index] < amount:
+                    can_afford = False
+                    gold_needed += amount - self.gems[gem_index]
+                    if gold_needed > self.gems[5]:
+                        can_afford_with_gold = False
                         break
 
             if can_afford:
-                legal_moves.append(('buy_reserved', card.id))
-                if gold_combinations:
-                    for comb in combinations(gold_combinations, min(gold_needed, len(gold_combinations))):
-                        comb_dict = {gem: gold_amount for gem, gold_amount in comb}
-                        total_cost = {gem: card.cost[gem] for gem in card.cost}
-                        for gem, amount in comb_dict.items():
-                            total_cost[gem] = total_cost.get(gem, 0) - amount
-                        total_cost['gold'] = gold_needed
-                        legal_moves.append(('buy_reserved_with_gold', {'card_id': card.id, 'cost': total_cost}))
-
-        return legal_moves
-
-    def handle_discards(self, moves, non_zero_player_gems, num_discards):
-        legal_moves = []
-        for move in moves:
-            action, gem_dict = move
-            for discard_comb in combinations(non_zero_player_gems, num_discards):
-                test_gem_dict = defaultdict(int, gem_dict)
-                for gem in discard_comb:
-                    test_gem_dict[gem] += 1
-                legal_moves.append((action, test_gem_dict))
-
+                legal_moves.append(('buy reserved', (None, card_index)))
+            elif can_afford_with_gold:
+                legal_moves.append(('buy reserved with gold', (None, card_index)))
+        
         return legal_moves
     
     def legal_to_vector(self, legal_moves):
-        format_vector = [
-            ('take', {'white': -1, 'blue': -1, 'green': -1}), # Take 1*3 of 5 gems
-            ('take', {'white': -1, 'blue': -1, 'red': -1}),
-            ('take', {'white': -1, 'blue': -1, 'black': -1}),
-            ('take', {'white': -1, 'green': -1, 'red': -1}),
-            ('take', {'white': -1, 'green': -1, 'black': -1}),
-            ('take', {'white': -1, 'red': -1, 'black': -1}),
-            ('take', {'blue': -1, 'green': -1, 'red': -1}),
-            ('take', {'blue': -1, 'green': -1, 'black': -1}),
-            ('take', {'blue': -1, 'red': -1, 'black': -1}),
-            ('take', {'green': -1, 'red': -1, 'black': -1}), 
-            ('take', {'white': -2}), # Take 2*1 of 5 gems
-            ('take', {'blue': -2}), 
-            ('take', {'green': -2}), 
-            ('take', {'red': -2}), 
-            ('take', {'black': -2}), 
-            ('take', {'white': -1, 'blue': -1}), # Take 1*2 of 2 of 5 gems
-            ('take', {'white': -1, 'green': -1}), 
-            ('take', {'white': -1, 'red': -1}), 
-            ('take', {'white': -1, 'black': -1}), 
-            ('take', {'blue': -1, 'green': -1}), 
-            ('take', {'blue': -1, 'red': -1}), 
-            ('take', {'blue': -1, 'black': -1}), 
-            ('take', {'green': -1, 'red': -1}), 
-            ('take', {'green': -1, 'black': -1}), 
-            ('take', {'red': -1, 'black': -1}), 
-            ('take', {'white': -1}), # Take 1 of 1 of 5 gems
-            ('take', {'blue': -1}), 
-            ('take', {'green': -1}),
-            ('take', {'red': -1}),
-            ('take', {'black': -1}), # IMPLEMENT RESERVING/BUYING BASED ON SIMPLE ID, DONT HAVE LONG FORMAT
-        ]
-
-        # 60 moves = 30 take + 12+3 buy + 12+3 reserve
-        # 303 moves = 30 take + 90 buy + 90 buy reserved + 90 reserve + 3 reserve top
-        moves_vector = [0] * 303
+        legal_mask = np.zeros(61, dtype=int)
         for move, details in legal_moves:
+            tier, card_index = details
             match move:
                 case 'take':
-                    for index, format_details in enumerate(format_vector):
-                        if format_details == (move, details):
-                            moves_vector[index] = 1
-                            break
+                    gem, amount = details # Overriding tier and card_index
+                    if amount == 1:
+                        legal_mask[gem] = 1
+                    elif amount == 2:
+                        legal_mask[gem+5] = 1
+                    if gem > 5:
+                        print("take is off-index", gem)
                 case 'buy':
-                    moves_vector[29 + details] = 1
-                case 'buy_reserved':
-                    moves_vector[119 + details] = 1
+                    if 15 + 4*tier + card_index >= 45:
+                        print("buy is off-index", tier, card_index)
+                    legal_mask[15 + 4*tier + card_index] = 1
+                case 'buy reserved':
+                    if 27 + card_index > 30:
+                        print("buy reserved is off-index", card_index)
+                    legal_mask[27 + card_index] = 1
+                case 'buy with gold':
+                    if 30 + 4*tier + card_index > 42:
+                        print("buy with gold is off-index", tier, card_index)
+                    legal_mask[30 + 4*tier + card_index] = 1
+                case 'buy reserved with gold':
+                    if 42 + card_index > 45:
+                        print("buy reserved with gold is off-index", card_index)
+                    legal_mask[42 + card_index] = 1
                 case 'reserve':
-                    moves_vector[209 + details] = 1
-                case 'reserve_top':
-                    moves_vector[299 + int(details[-1])] = 1 # Grabs n in 'tiern'
-        return moves_vector
+                    if 45 + 4*tier + card_index > 57:
+                        print("reserve is off-index", tier, card_index)
+                    legal_mask[45 + 4*tier + card_index] = 1
+                case 'reserve top':
+                    if 57 + tier > 60:
+                        print("reserve top is off-index", tier)
+                    legal_mask[57 + tier] = 1
+
+        return legal_mask
     
     def vector_to_details(self, move_index):
-        format_vector = [
-            ('take', {'white': -1, 'blue': -1, 'green': -1}), # Take 1*3 of 5 gems
-            ('take', {'white': -1, 'blue': -1, 'red': -1}),
-            ('take', {'white': -1, 'blue': -1, 'black': -1}),
-            ('take', {'white': -1, 'green': -1, 'red': -1}),
-            ('take', {'white': -1, 'green': -1, 'black': -1}),
-            ('take', {'white': -1, 'red': -1, 'black': -1}),
-            ('take', {'blue': -1, 'green': -1, 'red': -1}),
-            ('take', {'blue': -1, 'green': -1, 'black': -1}),
-            ('take', {'blue': -1, 'red': -1, 'black': -1}),
-            ('take', {'green': -1, 'red': -1, 'black': -1}), 
-            ('take', {'white': -2}), # Take 2*1 of 5 gems
-            ('take', {'blue': -2}), 
-            ('take', {'green': -2}), 
-            ('take', {'red': -2}), 
-            ('take', {'black': -2}), 
-            ('take', {'white': -1, 'blue': -1}), # Take 1*2 of 2 of 5 gems
-            ('take', {'white': -1, 'green': -1}), 
-            ('take', {'white': -1, 'red': -1}), 
-            ('take', {'white': -1, 'black': -1}), 
-            ('take', {'blue': -1, 'green': -1}), 
-            ('take', {'blue': -1, 'red': -1}), 
-            ('take', {'blue': -1, 'black': -1}), 
-            ('take', {'green': -1, 'red': -1}), 
-            ('take', {'green': -1, 'black': -1}), 
-            ('take', {'red': -1, 'black': -1}), 
-            ('take', {'white': -1}), # Take 1 of 1 of 5 gems
-            ('take', {'blue': -1}), 
-            ('take', {'green': -1}),
-            ('take', {'red': -1}),
-            ('take', {'black': -1}), # IMPLEMENT RESERVING/BUYING BASED ON SIMPLE ID, DONT HAVE LONG FORMAT
-        ]
+        tier = move_index % 15 // 4
+        card_index = move_index % 15 % 4
 
-        if move_index < 30:  # Take moves
-            move = format_vector[move_index]
-        elif move_index < 120:  # Buy moves
-            move = ('buy', move_index - 29) # Lowered to 29 because m_i=30 - 29 = 1
-        elif move_index < 210:  # Buy reserved moves
-            move = ('buy_reserved', move_index - 119)
-        elif move_index < 300:  # Reserve moves
-            move = ('reserve', move_index - 209)
-        else:  # Reserve top moves
-            move = ('reserve_top', 'tier' + str(move_index - 299))
+        if move_index < 15:  # Take (includes discarding a gem)
+            gem_index = move_index % 5
+            gems_to_take = np.zeros(6, dtype=int)
+
+            if move_index < 5:
+                gems_to_take[gem_index] = 1
+                move = ('take', (gems_to_take, None))
+            elif move_index < 10:
+                gems_to_take[gem_index] = 2
+                move = ('take', (gems_to_take, None))
+            else:
+                gems_to_take[gem_index] = -1
+                move = ('take', (gems_to_take, None))
+        elif move_index == 60:
+            move = ('take', ([0, 0, 0, 0, 0, 1], None))
+
+        elif move_index < 45: # Buy
+            if move_index < 27:
+                move = ('buy', (tier, card_index))
+            elif move_index < 30:
+                move = ('buy reserved', (None, move_index-27))
+            elif move_index < 42: # WE DONT ENTER THIS BECAUSE CHOOSE_MOVE DOESNT CALL IT
+                dummy_gems = 1 # dummy
+                move = ('buy with gold', ((tier, card_index), dummy_gems))
+            else: # WE DONT ENTER THIS BECAUSE CHOOSE_MOVE DOESNT CALL IT
+                dummy_gems = 1 # dummy
+                move = ('buy reserved with gold', ((None, move_index-42), dummy_gems))
+
+        elif move_index < 60: # Reserve
+            if move_index < 57:
+                move = ('reserve', (tier, card_index))
+            elif move_index < 60:
+                move = ('reserve top', (move_index-57, None))
         
         return move
     
@@ -269,18 +269,38 @@ class Player:
         legal_mask = self.legal_to_vector(legal_moves)
         rl_moves = self.rl_model.get_predictions(game_state, legal_mask)
         #strategic_moves = self.strategy.strategize(game_state, rl_moves, self.strategy_strength)
-        self.move_index = np.argmax(rl_moves) # changing to self.move_index
-        chosen_move = self.vector_to_details(self.move_index)
+        
+        self.move_index = move_index = np.argmax(rl_moves)
+        
+        # If the move takes a single token call take_tokens_loop
+        if move_index < 5:
+            self.entered_loop = True
+            chosen_move = ('take', (self.take_tokens_loop(game_state), None)) # Appending None for apply_move() format
+        elif 30 <= move_index < 45:
+            self.entered_loop = True # We'll remember() the move in the loop
+            
+            if move_index < 42:
+                tier = move_index % 15 // 4
+                card_index = move_index % 15 % 4
+                card = board.cards[tier][card_index]
+                spent_gems = self.buy_with_gold_loop(game_state, move_index, card)
+                chosen_move = ('buy with gold', ((tier, card_index), spent_gems))
+            else:
+                card_index = move_index - 42
+                card = self.reserved_cards[card_index]
+                spent_gems = self.buy_with_gold_loop(game_state, move_index, card)
+                chosen_move = ('buy reserved with gold', (card_index, spent_gems))
+        else:
+            chosen_move = self.vector_to_details(move_index)
+
+        self.chosen_move = chosen_move # for logging
         return chosen_move
     
     def get_state(self):
-        reserved_cards_state = {'tier1': [], 'tier2': [], 'tier3': []}
-        for card in self.reserved_cards:
-            reserved_cards_state[f'{card.tier}'].append(card.id)
         return {
-            'gems': self.gems,
-            'cards': self.cards_state,
-            'reserved_cards': reserved_cards_state,
+            'gems': self.gems.tolist(), 
+            'cards': self.card_ids, 
+            'reserved_cards': [(card.tier, card.id) for card in self.reserved_cards], 
             'points': self.points
         }
 
@@ -288,20 +308,14 @@ class Player:
         reserved_cards_vector = []
         for card in self.reserved_cards:
             reserved_cards_vector.extend(card.vector)
-        reserved_cards_vector += [0] * (11 * (3-len(self.reserved_cards)))
-        return (
-            list(self.gems.values()) + 
-            list(self.cards.values()) + 
-            reserved_cards_vector + 
-            [self.points])
+        reserved_cards_vector.extend([0] * 11*(3-len(self.reserved_cards)))
 
-if __name__ == "__main__":
-    import sys
-    sys.path.append("C:/Users/Public/Documents/Python_Files/Splendor")
-    from Environment.Splendor_components.Player_components.strategy import BestStrategy # type: ignore
-    from Environment.Splendor_components.Board_components.board import Board # type: ignore
-    from RL.model import RLAgent # type: ignore
+        state_vector = np.concatenate((
+            self.gems, # length 6
+            self.cards, # length 5
+            reserved_cards_vector, # length 11*3 = 33
+            [self.points] # length 1
+        ))
 
-    bob = Player('Bob', BestStrategy(),  1)
-    board = Board(2)
-    moves = bob.get_legal_moves(board)
+        assert len(state_vector) == 45, f"Player state vector is not 45, but {len(state_vector)}"
+        return state_vector
