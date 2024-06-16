@@ -12,10 +12,11 @@ if __name__ == "__main__":
     base_save_path = 'RL/trained_agents'
     log_path = "C:/Users/Public/Documents/Python_Files/Splendor/RL/trained_agents/game_logs"
     model_paths = [
-        "C:/Users/Public/Documents/Python_Files/Splendor/RL/trained_agents/Player1_48_48_48/model.keras",
-        "C:/Users/Public/Documents/Python_Files/Splendor/RL/trained_agents/Player2_48_48_48/model.keras"
+        "C:/Users/Public/Documents/Python_Files/Splendor/RL/trained_agents/Player1_200_100/model.keras",
+        "C:/Users/Public/Documents/Python_Files/Splendor/RL/trained_agents/Player2_200_100/model.keras"
     ]
     none_paths = [None, None]
 
-    layer_sizes = [48, 48, 48]
-    train_agent(base_save_path, log_path, layer_sizes, none_paths)
+    layer_sizes = [400, 100]
+    train_agent(base_save_path, log_path, layer_sizes, model_paths)
+ 

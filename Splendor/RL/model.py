@@ -11,11 +11,11 @@ class RLAgent:
         self.state_size = 247 # Size of state vector
         self.action_size = 61 # Maximum number of actions 
         self.memory = deque(maxlen=500)
-        self.gamma = 0.95  # discount rate
-        self.epsilon = 0.5  # exploration rate
+        self.gamma = 1  # discount rate
+        self.epsilon = 0.3  # exploration rate
         self.epsilon_min = 0.01
-        self.epsilon_decay = 0.95
-        self.learning_rate = 0.0001
+        self.epsilon_decay = 0.9
+        self.learning_rate = 0.0002
 
         self.layer_sizes = layer_sizes
         if model_path:
@@ -54,7 +54,7 @@ class RLAgent:
         self.memory.append((state, action, reward, next_state, done))
 
     def replay(self):
-        minibatch = np.random.choice(len(self.memory), len(self.memory)//4, replace=False)
+        minibatch = np.random.choice(len(self.memory), int(len(self.memory)**0.7), replace=False)
         for i in minibatch:
             state, action, reward, next_state, done = self.memory[i]
             target = self.model.predict(state, verbose=0)

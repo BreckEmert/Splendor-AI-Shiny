@@ -2,8 +2,8 @@
 
 import numpy as np
 
-from Environment.Splendor_components.Board_components.board import Board
-from Environment.Splendor_components.Player_components.player import Player
+from Environment.Splendor_components.Board_components.board import Board # type: ignore
+from Environment.Splendor_components.Player_components.player import Player # type: ignore
 
 
 class Game:
@@ -31,7 +31,6 @@ class Game:
 
         # Apply primary move
         chosen_move = self.active_player.choose_move(self.board, prev_state)
-        print(chosen_move)
         self.apply_move(chosen_move)
 
         self.check_noble_visit()
@@ -48,7 +47,7 @@ class Game:
                 self.board.take_or_return_gems(gems_to_take) # Confused about what we want here.  What does move contain, can it contain multiple?
                 self.active_player.take_or_spend_gems(gems_to_take)
 
-                self.reward -= 1
+                self.reward -= 0.1
             case 'buy':
                 bought_card = self.board.take_card(tier, card_index)
                 self.active_player.get_bought_card(bought_card)
@@ -56,7 +55,7 @@ class Game:
                 self.board.take_or_return_gems(-bought_card.cost)
                 self.active_player.take_or_spend_gems(-bought_card.cost)
 
-                self.reward += bought_card.points 
+                self.reward += bought_card.points
             case 'buy reserved':
                 bought_card = self.active_player.reserved_cards.pop(card_index)
                 self.active_player.get_bought_card(bought_card)
@@ -84,12 +83,16 @@ class Game:
 
                 if sum(self.active_player.gems) < 10:
                     self.active_player.gems[5] += gold
+                else:
+                    self.active_player.choose_discard(self.to_vector()) # Is there a way to not call this?
             case 'reserve top':
                 reserved_card, gold = self.board.reserve_from_deck(tier)
                 self.active_player.reserved_cards.append(reserved_card)
 
                 if sum(self.active_player.gems) < 10:
                     self.active_player.gems[5] += gold
+                else:
+                    self.active_player.choose_discard(self.to_vector()) # Is there a way to not call this?
 
     def check_noble_visit(self):
         for index, noble in enumerate(self.board.cards[3]):
