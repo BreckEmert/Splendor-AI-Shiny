@@ -36,6 +36,7 @@ class Player:
         # Set legal mask to only legal discards
         legal_mask = np.zeros(61, dtype=int)
         legal_mask[10:15] = game_state[self.state_offset:self.state_offset+5].astype(bool).astype(int) # Based on player's gems
+        print("discard gems available:", legal_mask[10:15])
         assert sum(legal_mask) > 1, "not enough legal moves in choose_discard"
 
         # Call the model to choose a discard
@@ -48,15 +49,17 @@ class Player:
         next_state[gem_index + self.state_offset] -= 1  # Update player's gems
         self.rl_model.remember(game_state, move_index, -1, next_state, 0) # Negative reward for inefficient move
 
+        print("discarding:", gem_index)
         return gem_index, next_state
 
     def take_tokens_loop(self, game_state):
         total_gems = sum(self.gems)
+        print("gems upon entering take_tokens_loop:", total_gems)
         chosen_gems = np.zeros(5, dtype=int)
 
         takes_remaining = 3
-        required_discards = max(0, total_gems - 7)
         legal_selection = game_state[:5]
+        print("board gems available:", legal_selection)
 
         while takes_remaining and np.any(legal_selection):
             # Discard if required
@@ -65,31 +68,35 @@ class Player:
 
                 # Implement move
                 total_gems -= 1
-                required_discards -= 1
                 chosen_gems[gem_index] -= 1 # Update for apply_move()?
                 legal_selection[gem_index] += 1 # Taking a second of the same gem is now legal
                 game_state = next_state.copy()
+            else:
+                print("did not enter discard loop, total_gems:", total_gems)
             
             # Set legal mask to only legal takes
             legal_mask = np.zeros(61, dtype=int)
             legal_mask[:5] = (legal_selection > 0).astype(int)
+            print("legal gems available:", legal_mask[:5])
             assert sum(legal_mask) > 0, "no legal moves in take tokens loop - take"
 
             # Call the model to choose a take
             rl_moves = self.rl_model.get_predictions(game_state, legal_mask)
-            move_index = np.argmax(rl_moves)
+            gem_index = np.argmax(rl_moves)
+            print("")
 
             next_state = game_state.copy()
-            next_state[move_index] -= 1 # Update board's gems
-            next_state[move_index+self.state_offset] += 1 # Update player's gems
+            next_state[gem_index] -= 1 # Update board's gems
+            next_state[gem_index+self.state_offset] += 1 # Update player's gems
             reward = -0.2 if takes_remaining == 3 else 0
-            self.rl_model.remember(game_state, move_index, reward, next_state, 0)
+            self.rl_model.remember(game_state, gem_index, reward, next_state, 0)
             
             # Implement move
             total_gems += 1
             takes_remaining -= 1
-            chosen_gems[move_index] += 1
-            legal_selection[move_index] *= 0 # Taking this gem again is now illegal unless previously discarded
+            chosen_gems[gem_index] += 1
+            print("end of while loop chosen_gems:", chosen_gems)
+            legal_selection[gem_index] *= 0 # Taking this gem again is now illegal unless previously discarded
             game_state = next_state.copy()
 
         return chosen_gems

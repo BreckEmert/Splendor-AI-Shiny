@@ -40,14 +40,14 @@ class Game:
         self.half_turns += 1
 
     def apply_move(self, move): # WE DON'T ACTUALLY NEED 'WITH GOLD' MOVES
+        print("game.apply_move:", move)
         action, (tier, card_index) = move
         match action:
             case 'take':
                 gems_to_take = tier
                 self.board.take_or_return_gems(gems_to_take) # Confused about what we want here.  What does move contain, can it contain multiple?
                 self.active_player.take_or_spend_gems(gems_to_take)
-
-                self.reward -= 0.1
+                self.reward += -1
             case 'buy':
                 bought_card = self.board.take_card(tier, card_index)
                 self.active_player.get_bought_card(bought_card)
@@ -55,13 +55,14 @@ class Game:
                 self.board.take_or_return_gems(-bought_card.cost)
                 self.active_player.take_or_spend_gems(-bought_card.cost)
 
-                self.reward += bought_card.points
+                self.reward += bought_card.points*3
             case 'buy reserved':
                 bought_card = self.active_player.reserved_cards.pop(card_index)
                 self.active_player.get_bought_card(bought_card)
 
                 self.board.take_or_return_gems(-bought_card.cost)
                 self.active_player.take_or_spend_gems(-bought_card.cost)
+                self.reward += bought_card.points*3
             case 'buy with gold':
                 spent_gems = card_index
                 tier, card_index = tier
@@ -70,6 +71,7 @@ class Game:
 
                 self.board.take_or_return_gems(spent_gems)
                 self.active_player.take_or_spend_gems(spent_gems)
+                self.reward += bought_card.points*3
             case 'buy reserved with gold':
                 card_index, spent_gems = tier, card_index
                 bought_card = self.active_player.reserved_cards.pop(card_index)
@@ -77,29 +79,36 @@ class Game:
 
                 self.board.take_or_return_gems(spent_gems)
                 self.active_player.take_or_spend_gems(spent_gems)
+                
+                self.reward += bought_card.points*3
             case 'reserve':
                 reserved_card, gold = self.board.reserve(tier, card_index)
                 self.active_player.reserved_cards.append(reserved_card)
 
                 if sum(self.active_player.gems) < 10:
                     self.active_player.gems[5] += gold
+                    self.reward += 2
                 else:
                     self.active_player.choose_discard(self.to_vector()) # Is there a way to not call this?
+                    self.active_player.gems[5] += gold
             case 'reserve top':
                 reserved_card, gold = self.board.reserve_from_deck(tier)
                 self.active_player.reserved_cards.append(reserved_card)
 
                 if sum(self.active_player.gems) < 10:
                     self.active_player.gems[5] += gold
+                    self.reward += 2
                 else:
                     self.active_player.choose_discard(self.to_vector()) # Is there a way to not call this?
+                    self.active_player.gems[5] += gold
+                    self.reward += -1
 
     def check_noble_visit(self):
         for index, noble in enumerate(self.board.cards[3]):
             if noble and np.all(self.active_player.cards >= noble.cost):
-                self.reward += noble.points
                 self.active_player.points += noble.points
                 self.board.cards[3][index] = None
+                self.reward += noble.points*2
                 break # Implement logic to choose the noble if tied
 
     def get_victor(self):

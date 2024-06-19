@@ -85,7 +85,7 @@ class Board:
         state_vector = self.gems.copy() # length 6
 
         tier_vector = []
-        for tier in self.cards[:3]: # length 11*3
+        for tier in self.cards[:3]: # length 11*3 * 3 tiers
             for card in tier:
                 if card:
                     tier_vector.extend(card.vector)

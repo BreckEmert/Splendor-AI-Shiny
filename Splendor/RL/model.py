@@ -54,19 +54,25 @@ class RLAgent:
         self.memory.append((state, action, reward, next_state, done))
 
     def replay(self):
-        minibatch = np.random.choice(len(self.memory), int(len(self.memory)**0.7), replace=False)
-        for i in minibatch:
-            state, action, reward, next_state, done = self.memory[i]
-            target = self.model.predict(state, verbose=0)
-            if done:
-                target[0][action] = reward
-            else:
-                t = self.model.predict(next_state, verbose=0)[0]
-                target[0][action] = reward + self.gamma * np.amax(t)
-            # print(f'replay fit, reward = {reward}')
-            self.model.fit(state, target, epochs=1, verbose=0)
+        minibatch_size = -(-len(self.memory)//2)
+        minibatch = np.random.choice(len(self.memory), minibatch_size, replace=False)
+        states = np.zeros((minibatch_size, self.state_size))
+        targets = np.zeros((minibatch_size, self.action_size))
 
-    def train(self, state, action, reward, next_state, done):
+        for i, idx in enumerate(minibatch):
+            state, action, reward, next_state, done = self.memory[idx]
+            target = self.model.predict(state)[0]
+            if done:
+                target[action] = reward
+            else:
+                t = self.model.predict(next_state)[0]
+                target[action] = reward + self.gamma * np.amax(t)
+            states[i] = state
+            targets[i] = target
+
+        self.model.fit(states, targets, epochs=1, verbose=0)
+
+    def train_individual(self, state, action, reward, next_state, done):
         target_f = self.model.predict(state, verbose=0)
         target_f[0][action] = reward
         if not done:
@@ -74,6 +80,25 @@ class RLAgent:
             target_f[0][action] = target
         # print(f'training fit, reward = {reward}')
         self.model.fit(state, target_f, epochs=1, verbose=0)
+
+    def train_batch(self, batch, reward):
+        np.random.shuffle(batch)
+
+        states = np.zeros((len(batch), self.state_size))
+        targets = np.zeros((len(batch), self.action_size))
+
+        for i, (state, action, _, next_state, done) in enumerate(batch):
+            target = self.model.predict(state)[0]
+            if done:
+                target[action] = reward
+            else:
+                t = self.model.predict(next_state)[0]
+                target[action] = reward + self.gamma * np.amax(t)
+            states[i] = state
+            targets[i] = target
+
+        self.model.fit(states, targets, epochs=1, verbose=0)
+
 
     def save_model(self, model_dir, player_name):
         layer_sizes_str = '_'.join(map(str, self.layer_sizes))
