@@ -16,5 +16,5 @@ if __name__ == "__main__":
 
     layer_sizes = [1024, 512]
     # train_agent(base_save_path, log_path, layer_sizes, none_path)
-    # priority_play(base_save_path, log_path, layer_sizes, none_path)
-    debug_game(base_save_path, log_path, layer_sizes, none_path)
+    priority_play(base_save_path, log_path, layer_sizes, none_path)
+    # debug_game(base_save_path, log_path, layer_sizes, none_path)

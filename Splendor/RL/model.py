@@ -2,6 +2,7 @@
 
 import numpy as np
 import os
+import tensorflow as tf
 from collections import deque
 from keras.models import load_model
 
@@ -81,24 +82,22 @@ class RLAgent:
         # print(f'training fit, reward = {reward}')
         self.model.fit(state, target_f, epochs=1, verbose=0)
 
-    def train_batch(self, batch, reward):
-        np.random.shuffle(batch)
+    def train_batch(self, batch, victor):
+        states = np.array([state for state, _, _, _, _ in batch])
+        actions = np.array([action for _, action, _, _, _ in batch])
 
-        states = np.zeros((len(batch), self.state_size))
-        targets = np.zeros((len(batch), self.action_size))
-
-        for i, (state, action, _, next_state, done) in enumerate(batch):
-            target = self.model.predict(state)[0]
-            if done:
-                target[action] = reward
+        with tf.GradientTape() as tape:
+            predictions = self.model(states, training=True)
+            if victor:
+                # One-hot encode the actions
+                action_targets = tf.keras.utils.to_categorical(actions, num_classes=self.action_size)
+                loss = tf.keras.losses.categorical_crossentropy(action_targets, predictions)
             else:
-                t = self.model.predict(next_state)[0]
-                target[action] = reward + self.gamma * np.amax(t)
-            states[i] = state
-            targets[i] = target
+                # Custom loss for losers
+                loss = -tf.reduce_sum(tf.math.log(predictions) * tf.one_hot(actions, self.action_size), axis=1)
 
-        self.model.fit(states, targets, epochs=1, verbose=0)
-
+        grads = tape.gradient(loss, self.model.trainable_variables)
+        self.model.optimizer.apply_gradients(zip(grads, self.model.trainable_variables))
 
     def save_model(self, model_dir, player_name):
         layer_sizes_str = '_'.join(map(str, self.layer_sizes))

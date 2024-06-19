@@ -25,7 +25,7 @@ class Player:
     def take_or_spend_gems(self, gems_to_change):
         self.gems += np.pad(gems_to_change, (0, 6-len(gems_to_change)))
         assert np.all(self.gems >= 0), "player changed gems to less than 0"
-        assert np.sum(self.gems) < 13, "player changed gems to more than 10" # RAISED GEM CAP 2
+        assert np.sum(self.gems) <= 12, "player changed gems to more than 10" # RAISED GEM CAP 2
 
     def get_bought_card(self, card):
         self.cards[card.gem] += 1
@@ -36,7 +36,6 @@ class Player:
         # Set legal mask to only legal discards
         legal_mask = np.zeros(61, dtype=int)
         legal_mask[10:15] = game_state[self.state_offset:self.state_offset+5].astype(bool).astype(int) # Based on player's gems
-        print("discard gems available:", legal_mask[10:15])
         assert sum(legal_mask) > 1, "not enough legal moves in choose_discard"
 
         # Call the model to choose a discard
@@ -49,17 +48,14 @@ class Player:
         next_state[gem_index + self.state_offset] -= 1  # Update player's gems
         self.rl_model.remember(game_state, move_index, -1, next_state, 0) # Negative reward for inefficient move
 
-        print("discarding:", gem_index)
         return gem_index, next_state
 
     def take_tokens_loop(self, game_state):
         total_gems = sum(self.gems)
-        print("gems upon entering take_tokens_loop:", total_gems)
         chosen_gems = np.zeros(5, dtype=int)
 
         takes_remaining = 3
         legal_selection = game_state[:5]
-        print("board gems available:", legal_selection)
 
         while takes_remaining and np.any(legal_selection):
             # Discard if required
@@ -71,19 +67,15 @@ class Player:
                 chosen_gems[gem_index] -= 1 # Update for apply_move()?
                 legal_selection[gem_index] += 1 # Taking a second of the same gem is now legal
                 game_state = next_state.copy()
-            else:
-                print("did not enter discard loop, total_gems:", total_gems)
             
             # Set legal mask to only legal takes
             legal_mask = np.zeros(61, dtype=int)
             legal_mask[:5] = (legal_selection > 0).astype(int)
-            print("legal gems available:", legal_mask[:5])
             assert sum(legal_mask) > 0, "no legal moves in take tokens loop - take"
 
             # Call the model to choose a take
             rl_moves = self.rl_model.get_predictions(game_state, legal_mask)
             gem_index = np.argmax(rl_moves)
-            print("")
 
             next_state = game_state.copy()
             next_state[gem_index] -= 1 # Update board's gems
@@ -95,7 +87,6 @@ class Player:
             total_gems += 1
             takes_remaining -= 1
             chosen_gems[gem_index] += 1
-            print("end of while loop chosen_gems:", chosen_gems)
             legal_selection[gem_index] *= 0 # Taking this gem again is now illegal unless previously discarded
             game_state = next_state.copy()
 
@@ -192,7 +183,6 @@ class Player:
             elif can_afford_with_gold:
                 legal_moves.append(('buy reserved with gold', (None, card_index)))
         
-        assert len(legal_moves) > 0, "No legal moves found in get_legal_moves"
         return legal_moves
     
     def legal_to_vector(self, legal_moves):
@@ -243,9 +233,11 @@ class Player:
                 gems_to_take[gem_index] = 2
                 move = ('take', (gems_to_take, None))
             else:
+                raise Exception("Player chose to discard a gem")
                 gems_to_take[gem_index] = -1
                 move = ('take', (gems_to_take, None))
         elif move_index == 60: # Take gold
+            raise Exception("Player chose to take a gold")
             move = ('take', ([0, 0, 0, 0, 0, 1], None))
 
         elif move_index < 45: # Buy
@@ -279,10 +271,10 @@ class Player:
                 spent_gems = self.buy_with_gold_loop(game_state, move_index, card)
                 move = ('buy reserved with gold', (card_index, spent_gems))
 
-        elif move_index < 60: # Reserve
+        else: # < 60 Reserve
             if move_index < 57:
                 move = ('reserve', (tier, card_index))
-            elif move_index < 60:
+            else: # 60 already covered
                 move = ('reserve top', (move_index-57, None))
         
         return move

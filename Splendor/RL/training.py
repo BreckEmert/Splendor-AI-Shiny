@@ -27,14 +27,15 @@ def debug_game(base_save_path, log_path, layer_sizes, model_path):
         log_state = open(os.path.join(log_path, f"game_states_episode_{episode}.json"), 'w')
         log_move = open(os.path.join(log_path, f"moves_episode_{episode}.json"), 'w')
 
-        game = simulate_game(players, True, log_state, log_move)
-        print(f"Simulated game {episode}")
+        simulate_game(players, True, log_state, log_move)
+        # game = simulate_game(players, False, None, None)
+        # print(f"Simulated game {episode}")
 
 def simulate_game(players, logging, log_state, log_move):
     game = Game(players)
     state = np.array(game.to_vector())
 
-    while not game.victor and game.half_turns < 350:
+    while not game.victor and game.half_turns < 300:
         # Take a turn
         game.turn()
         next_state = np.array(game.to_vector())
@@ -74,7 +75,7 @@ def priority_play(base_save_path, log_path, layer_sizes, model_path):
     ]
 
     n_128 = 1
-    sims = 1_000
+    sims = 6
     victor_memory = []
     loser_memory = []
     for i in range(sims):
@@ -90,8 +91,8 @@ def priority_play(base_save_path, log_path, layer_sizes, model_path):
     victor_memory.sort(key=len, reverse=True)
     loser_memory.sort(key=len, reverse=True)
 
-    shortest_victor = random.sample(victor_memory[ :sims//5], 128*n_128)
-    longest_loser = random.sample(loser_memory[4*sims//5: ], 128*n_128)
+    shortest_victor = random.sample(victor_memory[ :sims//5], 1) # 128*n_128
+    longest_loser = random.sample(loser_memory[4*sims//5: ], 1)
     print("Average lengths of 10 percents:", np.mean([len(mem) for mem in shortest_victor]), np.mean([len(mem) for mem in longest_loser]))
 
     # Flatten the memory
@@ -100,8 +101,8 @@ def priority_play(base_save_path, log_path, layer_sizes, model_path):
 
     # Train on memories
     print("Training on memories")
-    player1_model.train_batch(flattened_victor_memory, 5)
-    player1_model.train_batch(flattened_loser_memory, -5)
+    player1_model.train_batch(flattened_victor_memory, True)
+    player1_model.train_batch(flattened_loser_memory, False)
 
     # Save model
     print("Saving model")

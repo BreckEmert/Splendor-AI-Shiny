@@ -40,10 +40,9 @@ class Game:
         self.half_turns += 1
 
     def apply_move(self, move): # WE DON'T ACTUALLY NEED 'WITH GOLD' MOVES
-        print("game.apply_move:", move)
         action, (tier, card_index) = move
         match action:
-            case 'take':
+            case 'take': # ENTERED LOOP SO SELF.REWARD DOESNT DO ANYTHING
                 gems_to_take = tier
                 self.board.take_or_return_gems(gems_to_take) # Confused about what we want here.  What does move contain, can it contain multiple?
                 self.active_player.take_or_spend_gems(gems_to_take)
@@ -63,7 +62,7 @@ class Game:
                 self.board.take_or_return_gems(-bought_card.cost)
                 self.active_player.take_or_spend_gems(-bought_card.cost)
                 self.reward += bought_card.points*3
-            case 'buy with gold':
+            case 'buy with gold': # ENTERED LOOP SO SELF.REWARD DOESNT DO ANYTHING
                 spent_gems = card_index
                 tier, card_index = tier
                 bought_card = self.board.take_card(tier, card_index)
@@ -72,7 +71,7 @@ class Game:
                 self.board.take_or_return_gems(spent_gems)
                 self.active_player.take_or_spend_gems(spent_gems)
                 self.reward += bought_card.points*3
-            case 'buy reserved with gold':
+            case 'buy reserved with gold': # ENTERED LOOP SO SELF.REWARD DOESNT DO ANYTHING
                 card_index, spent_gems = tier, card_index
                 bought_card = self.active_player.reserved_cards.pop(card_index)
                 self.active_player.get_bought_card(bought_card)
@@ -89,19 +88,23 @@ class Game:
                     self.active_player.gems[5] += gold
                     self.reward += 2
                 else:
-                    self.active_player.choose_discard(self.to_vector()) # Is there a way to not call this?
+                    replaced_gem_index, _ = self.active_player.choose_discard(self.to_vector()) # Negative reward in loop
+                    replaced_gem_vector = np.zeros(6, dtype=int)
+                    replaced_gem_vector[replaced_gem_index] -= 1
+                    self.active_player.take_or_spend_gems(replaced_gem_vector)
                     self.active_player.gems[5] += gold
-            case 'reserve top':
+            case 'reserve top': # OTHER PLAYERS CAN'T ACTUALLY SEE THIS CARD
                 reserved_card, gold = self.board.reserve_from_deck(tier)
                 self.active_player.reserved_cards.append(reserved_card)
 
                 if sum(self.active_player.gems) < 10:
                     self.active_player.gems[5] += gold
-                    self.reward += 2
                 else:
-                    self.active_player.choose_discard(self.to_vector()) # Is there a way to not call this?
+                    replaced_gem_index, _ = self.active_player.choose_discard(self.to_vector()) # Negative reward in loop
+                    replaced_gem_vector = np.zeros(6, dtype=int)
+                    replaced_gem_vector[replaced_gem_index] -= 1
+                    self.active_player.take_or_spend_gems(replaced_gem_vector)
                     self.active_player.gems[5] += gold
-                    self.reward += -1
 
     def check_noble_visit(self):
         for index, noble in enumerate(self.board.cards[3]):
