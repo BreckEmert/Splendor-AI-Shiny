@@ -1,6 +1,5 @@
 # Splendor/RL/training.py
 
-import json
 import numpy as np
 import os
 import random
@@ -31,40 +30,16 @@ def debug_game(base_save_path, log_path, layer_sizes, model_path):
         # game = simulate_game(players, False, None, None)
         # print(f"Simulated game {episode}")
 
-def simulate_game(players, logging, log_state, log_move):
+def simulate_game(players):
     game = Game(players)
-    state = np.array(game.to_vector())
 
-    while not game.victor and game.half_turns < 300:
-        # Take a turn
+    while not game.victor and game.half_turns < 350:
         game.turn()
-        next_state = np.array(game.to_vector())
-
-        # Log states and moves
-        if logging:
-            json.dump(game.get_state(), log_state)
-            log_state.write('\n')
-            log_move.write(str(game.active_player.chosen_move) + '\n')
-
-        # Agent remembers
-        active_player = game.active_player
-        if not active_player.entered_loop:
-            active_player.rl_model.remember(
-                state, 
-                active_player.move_index, 
-                game.reward, 
-                next_state, 
-                1 if game.victor else 0
-            )
-        active_player.entered_loop = False
-
-        # Update state
-        state = next_state
     
     return game
 
-def priority_play(base_save_path, log_path, layer_sizes, model_path):
-    """searches tons of games and selects the out 10%s for training"""
+def priority_play(layer_sizes, model_path):
+    """searches tons of games and selects the outer 10%s for training"""
     # Players and strategies (BestStrategy for training perfectly)
     player1_model = RLAgent(layer_sizes, model_path)
     player2_model = RLAgent(layer_sizes, model_path)
@@ -74,117 +49,79 @@ def priority_play(base_save_path, log_path, layer_sizes, model_path):
         ('Player2', BestStrategy(), 1, player2_model, 1)
     ]
 
-    n_128 = 1
-    sims = 6
-    victor_memory = []
-    loser_memory = []
-    for i in range(sims):
-        game = simulate_game(players, False, None, None)
-        print(f"simulated game {i}")
-        for player in game.players:
-            if player.victor:
-                victor_memory.append(player.rl_model.memory)
-            else:
-                loser_memory.append(player.rl_model.memory)
-        
-    # Sort and select memory
-    victor_memory.sort(key=len, reverse=True)
-    loser_memory.sort(key=len, reverse=True)
+    num_wins = 4
+    max_states = 520
+    target_percentage = 0.3
 
-    shortest_victor = random.sample(victor_memory[ :sims//5], 1) # 128*n_128
-    longest_loser = random.sample(loser_memory[4*sims//5: ], 1)
-    print("Average lengths of 10 percents:", np.mean([len(mem) for mem in shortest_victor]), np.mean([len(mem) for mem in longest_loser]))
-
-    # Flatten the memory
-    flattened_victor_memory = [memory for game in shortest_victor for memory in game]
-    flattened_loser_memory = [memory for game in longest_loser for memory in game]
-
-    # Train on memories
-    print("Training on memories")
-    player1_model.train_batch(flattened_victor_memory, True)
-    player1_model.train_batch(flattened_loser_memory, False)
-
-    # Save model
-    print("Saving model")
-    player1_model.save_model(base_save_path, "priority_play")
-
-def train_agent(base_save_path, log_path, layer_sizes, model_paths=None):
-    # Players and strategies (BestStrategy for training perfectly)
-    player1_model = RLAgent(layer_sizes, model_paths[0])
-    player2_model = RLAgent(layer_sizes, model_paths[1])
+    action_size = player1_model.action_size
+    state_size = player1_model.state_size
+    batch_size = 128
     
-    players = [
-        ('Player1', BestStrategy(), 1, player1_model, 0),
-        ('Player2', BestStrategy(), 1, player2_model, 1)
-    ]
-    
-    logging = False
+    while True:
+        # Set player2 to be the most updated player 1 model
+        player2_model.model.set_weights(player1_model.model.get_weights())
 
-    # Training loop
-    for episode in range(1):  # Number of games
-        # Log every 10 games
-        if episode % 10 == 0:
-            log_state = open(os.path.join(log_path, f"game_states_episode_{episode}.json"), 'w')
-            log_move = open(os.path.join(log_path, f"moves_episode_{episode}.json"), 'w')
-            logging = True
+        # Preallocate space to avoid padding
+        final_states = np.empty((num_wins, max_states, state_size), dtype=int) # Will need to be floats when we do calculations
+        final_actions = np.zeros((num_wins, max_states, action_size), dtype=int)
 
-        game = simulate_game(players, logging, log_state, log_move)
-        print(f"Episode {episode+1} game complete and took {game.half_turns} turns. Replaying.")
-
-        # Replay
-        for player in game.players:
-            rl_model = player.rl_model
-            reversed_memory = list(reversed(player.rl_model.memory))
-
-            # Reward token takes leading up to card purchases
-            # Find last purchase
-            for i, (_, move_index, _, _, _) in enumerate(reversed_memory):
-                if 15 <= move_index < 45:
-                    first_purchase_index = i
-                    break
-
-            count_since_purchase = 0
-            reward = 3
-            for state, move_index, _, next_state, _ in reversed_memory[first_purchase_index+1:]:
-                if move_index >= 15 and move_index < 45: # Card puchases
-                    count_since_purchase = 0
-                elif move_index < 15: # Reward token takes
-                    if count_since_purchase < 4:
-                        rl_model.train_individual(state, move_index, reward, next_state, 0)
-                        if 5 <= move_index < 10:
-                            reward *= .8
-                            count_since_purchase += 1
-                        else:
-                            reward *= .9
-                            count_since_purchase += 0.5
-            
-            # Regular replay
-            player.rl_model.replay()
-
-            # Winner/loser replay
-            final_reward = 10 if player == game.victor else -10
-            indices = np.random.permutation(len(player.rl_model.memory))
-            for i in indices:
-                state, move_index, reward, next_state, done = player.rl_model.memory[i]
-                player.rl_model.train_individual(state, move_index, final_reward, next_state, done)
-
-            # Decay epsilon
-            if player.rl_model.epsilon > player.rl_model.epsilon_min:
-                player.rl_model.epsilon *= player.rl_model.epsilon_decay
+        final_masks = np.zeros((num_wins, max_states), dtype=bool)
+        final_lengths = np.empty((num_wins, ), dtype=int)
         
-        # Close logs
-        if logging:
-            log_state.close()
-            log_move.close()
+        i, current_wins = 0, 0
+        while current_wins < num_wins:
+            game = Game(players)
+            game.turn() # So that active_player exists
+            while not game.victor and game.active_player.rl_model.num_predicts < max_states-6: # Single turn makes up to 6 predictions
+                game.turn()
 
-        # Log the progress
-        print(f"Episode {episode+1} replayed")
-
-        # Save models
-        if episode%5 == 0:
             for player in game.players:
-                player.rl_model.save_model(base_save_path, player.name)
+                if player.victor:
+                    print("won")
+                    num_moves = len(player.rl_model.action_memory)
 
-    # Save models
-    for player in game.players:
-        player.rl_model.save_model(base_save_path, player.name)
+                    # Place game into preallocated arrays
+                    final_states[current_wins][ :num_moves] = player.rl_model.state_memory
+                    final_actions[current_wins][np.arange(num_moves), player.rl_model.action_memory] = 1
+
+                    final_masks[current_wins][ :num_moves] = True
+                    final_lengths[current_wins] = player.rl_model.num_predicts
+                    
+                    current_wins += 1
+
+                # Reset the game
+                player.rl_model.state_memory = np.empty((0, state_size), dtype=float)
+                player.rl_model.action_memory = np.empty((0, ), dtype=int)
+                player.rl_model.num_predicts = 0
+
+            i += 1
+        
+        # Update the rolling average target
+        if current_wins/i > target_percentage:
+            max_states = int(max_states * 0.98)
+        print("Percentage of games won:", round(current_wins/i, 2))
+
+        # Flatten the arrays to match the model input
+        final_states = final_states.reshape(-1, state_size)
+        final_actions = final_actions.reshape(-1, action_size)
+        final_masks = final_masks.reshape(-1)
+
+        # Shuffle the data
+        indices = np.arange(final_states.shape[0])
+        np.random.shuffle(indices)
+        final_states = final_states[indices]
+        final_actions = final_actions[indices]
+        final_masks = final_masks[indices]
+
+        # Train on memories in batches
+        num_samples = final_states.shape[0]
+        for start in range(0, num_samples, batch_size):
+            end = min(start + batch_size, num_samples)
+            batch_states = final_states[start:end]
+            batch_actions = final_actions[start:end]
+            batch_masks = final_masks[start:end]
+
+            player1_model.train_batch(batch_states, batch_actions, batch_masks)
+
+        # Save model
+        player1_model.save_model(model_path)

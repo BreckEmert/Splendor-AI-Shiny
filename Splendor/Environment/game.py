@@ -8,25 +8,16 @@ from Environment.Splendor_components.Player_components.player import Player # ty
 
 class Game:
     def __init__(self, players):
-        self.num_players = len(players)
-
         self.board = Board(self.num_players)
         self.players: list = [Player(name, strategy, strategy_strength, rl_model, turn_order_index) 
                               for name, strategy, strategy_strength, rl_model, turn_order_index in players]
 
-        self.reward = 0
-        self.active_player = 0
+        self.active_player = players[0]
         self.half_turns: int = 0
-        self.is_final_turn: bool = 0
-        self.victor = 0
+        self.victor = False
     
     def turn(self):
-        if self.is_final_turn:
-            self.victor = self.get_victor()
-            self.active_player.victor = True
-
-        self.reward = 0
-        self.active_player = self.players[self.half_turns % self.num_players]
+        self.active_player = self.players[self.half_turns % 2]
         prev_state = self.to_vector()
 
         # Apply primary move
@@ -34,35 +25,33 @@ class Game:
         self.apply_move(chosen_move)
 
         self.check_noble_visit()
-        if self.active_player.points >= 15:
-            self.is_final_turn = 1
+
+        if self.active_player.points >= 15: # Not doing final turn logic
+            self.victor = True
+            self.active_player.victor = True
 
         self.half_turns += 1
 
-    def apply_move(self, move): # WE DON'T ACTUALLY NEED 'WITH GOLD' MOVES
+    def apply_move(self, move):
         action, (tier, card_index) = move
         match action:
-            case 'take': # ENTERED LOOP SO SELF.REWARD DOESNT DO ANYTHING
+            case 'take':
                 gems_to_take = tier
-                self.board.take_or_return_gems(gems_to_take) # Confused about what we want here.  What does move contain, can it contain multiple?
+                self.board.take_or_return_gems(gems_to_take)
                 self.active_player.take_or_spend_gems(gems_to_take)
-                self.reward += -1
             case 'buy':
                 bought_card = self.board.take_card(tier, card_index)
                 self.active_player.get_bought_card(bought_card)
 
                 self.board.take_or_return_gems(-bought_card.cost)
                 self.active_player.take_or_spend_gems(-bought_card.cost)
-
-                self.reward += bought_card.points*3
             case 'buy reserved':
                 bought_card = self.active_player.reserved_cards.pop(card_index)
                 self.active_player.get_bought_card(bought_card)
 
                 self.board.take_or_return_gems(-bought_card.cost)
                 self.active_player.take_or_spend_gems(-bought_card.cost)
-                self.reward += bought_card.points*3
-            case 'buy with gold': # ENTERED LOOP SO SELF.REWARD DOESNT DO ANYTHING
+            case 'buy with gold':
                 spent_gems = card_index
                 tier, card_index = tier
                 bought_card = self.board.take_card(tier, card_index)
@@ -70,25 +59,21 @@ class Game:
 
                 self.board.take_or_return_gems(spent_gems)
                 self.active_player.take_or_spend_gems(spent_gems)
-                self.reward += bought_card.points*3
-            case 'buy reserved with gold': # ENTERED LOOP SO SELF.REWARD DOESNT DO ANYTHING
+            case 'buy reserved with gold':
                 card_index, spent_gems = tier, card_index
                 bought_card = self.active_player.reserved_cards.pop(card_index)
                 self.active_player.get_bought_card(bought_card)
 
                 self.board.take_or_return_gems(spent_gems)
                 self.active_player.take_or_spend_gems(spent_gems)
-                
-                self.reward += bought_card.points*3
             case 'reserve':
                 reserved_card, gold = self.board.reserve(tier, card_index)
                 self.active_player.reserved_cards.append(reserved_card)
 
                 if sum(self.active_player.gems) < 10:
                     self.active_player.gems[5] += gold
-                    self.reward += 2
                 else:
-                    replaced_gem_index, _ = self.active_player.choose_discard(self.to_vector()) # Negative reward in loop
+                    replaced_gem_index, _ = self.active_player.choose_discard(self.to_vector())
                     replaced_gem_vector = np.zeros(6, dtype=int)
                     replaced_gem_vector[replaced_gem_index] -= 1
                     self.active_player.take_or_spend_gems(replaced_gem_vector)
@@ -100,7 +85,7 @@ class Game:
                 if sum(self.active_player.gems) < 10:
                     self.active_player.gems[5] += gold
                 else:
-                    replaced_gem_index, _ = self.active_player.choose_discard(self.to_vector()) # Negative reward in loop
+                    replaced_gem_index, _ = self.active_player.choose_discard(self.to_vector())
                     replaced_gem_vector = np.zeros(6, dtype=int)
                     replaced_gem_vector[replaced_gem_index] -= 1
                     self.active_player.take_or_spend_gems(replaced_gem_vector)
@@ -111,12 +96,7 @@ class Game:
             if noble and np.all(self.active_player.cards >= noble.cost):
                 self.active_player.points += noble.points
                 self.board.cards[3][index] = None
-                self.reward += noble.points*2
                 break # Implement logic to choose the noble if tied
-
-    def get_victor(self):
-        victor = max(self.players, key=lambda p: p.points)
-        return victor
    
     def get_state(self):
         return {
@@ -127,9 +107,7 @@ class Game:
 
     def to_vector(self):
         board_vector = self.board.to_vector() # length 156
-        player_vectors = [player.to_vector() for player in self.players] # length 45*2  90
+        active_player = self.active_player.to_vector() # length 45
+        enemy_player = self.players[(self.half_turns+1) % 2].to_vector() # length 45
 
-        state_vector = np.concatenate((board_vector, *player_vectors, [self.is_final_turn])) # plus length 1
-
-        assert len(state_vector) == 247, f"Game state vector is not 247, but {len(state_vector)}"
-        return state_vector # length 247
+        return np.concatenate((board_vector, active_player, enemy_player))
