@@ -9,10 +9,10 @@ if __name__ == "__main__":
 
     from RL import priority_play, debug_game # type: ignore
     
-    model_path = "C:/Users/Public/Documents/Python_Files/Splendor/RL/trained_agents/Player1_1024_512"
+    model_path = "C:/Users/Public/Documents/Python_Files/Splendor/RL/trained_agents/1024_512_512"
     none_path = None
 
-    layer_sizes = [1024, 512]
+    layer_sizes = [1024, 512, 512]
     # train_agent(base_save_path, log_path, layer_sizes, none_path)
     priority_play(layer_sizes, model_path)
     # debug_game(base_save_path, log_path, layer_sizes, none_path)

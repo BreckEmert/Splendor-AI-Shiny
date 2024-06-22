@@ -2,7 +2,6 @@
 
 import numpy as np
 import os
-import random
 
 from Environment.Splendor_components.Player_components.strategy import ( # type: ignore
     BestStrategy, RandomStrategy, OffensiveStrategy, ResourceHog, ObliviousStrategy
@@ -39,19 +38,19 @@ def simulate_game(players):
     return game
 
 def priority_play(layer_sizes, model_path):
-    """searches tons of games and selects the outer 10%s for training"""
+    """searches tons of games and selects the fastest 10% for training"""
     # Players and strategies (BestStrategy for training perfectly)
     player1_model = RLAgent(layer_sizes, model_path)
     player2_model = RLAgent(layer_sizes, model_path)
     
     players = [
-        ('Player1', BestStrategy(), 1, player1_model, 0),
-        ('Player2', BestStrategy(), 1, player2_model, 1)
+        ('Player1', BestStrategy(), 1, player1_model),
+        ('Player2', BestStrategy(), 1, player2_model)
     ]
 
-    num_wins = 4
-    max_states = 520
-    target_percentage = 0.3
+    num_wins = 1
+    max_states = 400
+    target_percentage = 0.1
 
     action_size = player1_model.action_size
     state_size = player1_model.state_size
@@ -99,7 +98,7 @@ def priority_play(layer_sizes, model_path):
         # Update the rolling average target
         if current_wins/i > target_percentage:
             max_states = int(max_states * 0.98)
-        print("Percentage of games won:", round(current_wins/i, 2))
+        print("Percentage of games won:", round(current_wins/i, 2), "max_states:", max_states)
 
         # Flatten the arrays to match the model input
         final_states = final_states.reshape(-1, state_size)
@@ -115,6 +114,7 @@ def priority_play(layer_sizes, model_path):
 
         # Train on memories in batches
         num_samples = final_states.shape[0]
+        print("num_samples:", num_samples)
         for start in range(0, num_samples, batch_size):
             end = min(start + batch_size, num_samples)
             batch_states = final_states[start:end]

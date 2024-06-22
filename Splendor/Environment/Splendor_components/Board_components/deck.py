@@ -21,7 +21,7 @@ class Card:
     
     def to_vector(self):
         gem_one_hot = self.gem_to_one_hot(self.gem)
-        return np.concatenate((gem_one_hot, [self.points], self.cost))
+        return np.concatenate((gem_one_hot, [self.points/15], self.cost))
 
     
 class Deck:

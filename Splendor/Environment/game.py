@@ -8,27 +8,27 @@ from Environment.Splendor_components.Player_components.player import Player # ty
 
 class Game:
     def __init__(self, players):
-        self.board = Board(self.num_players)
-        self.players: list = [Player(name, strategy, strategy_strength, rl_model, turn_order_index) 
-                              for name, strategy, strategy_strength, rl_model, turn_order_index in players]
+        self.board = Board()
+        self.players: list = [Player(name, strategy, strategy_strength, rl_model) 
+                              for name, strategy, strategy_strength, rl_model in players]
 
         self.active_player = players[0]
         self.half_turns: int = 0
-        self.victor = False
+        self.victor: bool = False
     
     def turn(self):
         self.active_player = self.players[self.half_turns % 2]
-        prev_state = self.to_vector()
+        game_state = self.to_vector()
 
         # Apply primary move
-        chosen_move = self.active_player.choose_move(self.board, prev_state)
+        chosen_move = self.active_player.choose_move(self.board, game_state)
         self.apply_move(chosen_move)
 
-        self.check_noble_visit()
-
-        if self.active_player.points >= 15: # Not doing final turn logic
-            self.victor = True
-            self.active_player.victor = True
+        if self.active_player.points > 8: # Saving compute
+            self.check_noble_visit()
+            if self.active_player.points >= 15: # Not doing final turn logic
+                self.victor = True
+                self.active_player.victor = True
 
         self.half_turns += 1
 
@@ -96,7 +96,7 @@ class Game:
             if noble and np.all(self.active_player.cards >= noble.cost):
                 self.active_player.points += noble.points
                 self.board.cards[3][index] = None
-                break # Implement logic to choose the noble if tied
+                break # No logic to tie-break, seems too insignificant for training
    
     def get_state(self):
         return {
@@ -106,7 +106,7 @@ class Game:
         }
 
     def to_vector(self):
-        board_vector = self.board.to_vector() # length 156
+        board_vector = self.board.to_vector() # length 150 !change player.state_offset if this changes!
         active_player = self.active_player.to_vector() # length 45
         enemy_player = self.players[(self.half_turns+1) % 2].to_vector() # length 45
 

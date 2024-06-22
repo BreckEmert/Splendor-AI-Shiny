@@ -4,17 +4,16 @@ import numpy as np
 
 
 class Player:
-    def __init__(self, name, strategy, strategy_strength, rl_model, turn_order_index):
+    def __init__(self, name, strategy, strategy_strength, rl_model):
         self.name: str = name
-        self.turn_order_index = turn_order_index # Unused
-        self.state_offset = 156 + 45*turn_order_index
+        self.state_offset: int = 150
 
         self.gems: np.ndarray = np.zeros(6, dtype=int)
         self.cards: np.ndarray = np.zeros(5, dtype=int)
         self.reserved_cards: list = []
         self.points: int = 0
 
-        self.card_ids = [[[], [], [], [], []], [[], [], [], [], []], [[], [], [], [], []], [[], [], [], [], []]]
+        # self.card_ids = [[[], [], [], [], []], [[], [], [], [], []], [[], [], [], [], []], [[], [], [], [], []]]
         self.rl_model = rl_model
         self.entered_loop = False
         self.victor = False
@@ -29,7 +28,7 @@ class Player:
     def get_bought_card(self, card):
         self.cards[card.gem] += 1
         self.points += card.points
-        self.card_ids[card.tier][card.gem].append(card.id)
+        # self.card_ids[card.tier][card.gem].append(card.id)
 
     def choose_discard(self, game_state):
         # Set legal mask to only legal discards
@@ -44,22 +43,21 @@ class Player:
         # Remember
         self.rl_model.remember(game_state, move_index)
 
-        # Update board and player in the game state
-        game_state[gem_index] += 1
-        game_state[gem_index + self.state_offset] -= 1
+        # Update player in the game state (not board anymore)
+        game_state[gem_index + self.state_offset] -= 0.25
 
         return gem_index, game_state
 
-    def take_tokens_loop(self, game_state):
+    def take_tokens_loop(self, game_state, board_gems):
         total_gems = sum(self.gems)
         chosen_gems = np.zeros(5, dtype=int)
 
         takes_remaining = 3
-        legal_selection = game_state[:5]
+        legal_selection = board_gems[:5].copy()
 
         while takes_remaining and np.any(legal_selection):
             # Discard if required
-            if total_gems == 12:
+            if total_gems == 10:
                 gem_index, game_state = self.choose_discard(game_state)
 
                 # Implement move
@@ -78,9 +76,8 @@ class Player:
             # Remember
             self.rl_model.remember(game_state, gem_index)
 
-            # Update board and player in the game state
-            game_state[gem_index] -= 1
-            game_state[gem_index+self.state_offset] += 1
+            # Update player in the game state
+            game_state[gem_index+self.state_offset] += 0.25
 
             # Implement move
             total_gems += 1
@@ -110,9 +107,8 @@ class Player:
             # Remember
             self.rl_model.remember(game_state, move_index)
 
-            # Update board and player in game state
-            game_state[gem_index] += 1
-            game_state[gem_index+self.state_offset] -= 1
+            # Update player in game state
+            game_state[gem_index+self.state_offset] -= 0.25
 
             # Propagate move
             chosen_gems[gem_index] -= 1
@@ -215,7 +211,7 @@ class Player:
 
             if move_index < 5:
                 self.entered_loop = True
-                move = ('take', (self.take_tokens_loop(game_state), None))
+                move = ('take', (self.take_tokens_loop(game_state, board.gems), None))
             else:
                 gems_to_take[gem_index] = 2
                 move = ('take', (gems_to_take, None))
@@ -270,7 +266,7 @@ class Player:
         reserved_cards_vector.extend([0] * 11*(3-len(self.reserved_cards)))
 
         state_vector = np.concatenate((
-            self.gems, # length 6
+            self.gems/4, # length 6, there are actually 5 gold but 0 is all that matters
             self.cards, # length 5
             reserved_cards_vector, # length 11*3 = 33
             [self.points/15] # length 1

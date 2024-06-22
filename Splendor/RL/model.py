@@ -8,18 +8,15 @@ from keras.models import load_model
 
 class RLAgent:
     def __init__(self, layer_sizes, model_path=None):
-        self.state_size = 247 # Size of state vector
+        self.state_size = 240 # Size of state vector
         self.action_size = 61 # Maximum number of actions 
 
         self.state_memory = np.empty((0, self.state_size), dtype=float)
         self.action_memory = np.empty((0, ), dtype=int)
         self.num_predicts = 0
 
-        self.gamma = 1  # discount rate
-        self.epsilon = 0.3  # exploration rate
-        self.epsilon_min = 0.01
-        self.epsilon_decay = 0.9
-        self.learning_rate = 0.03
+        self.epsilon = 0.8  # exploration rate
+        self.learning_rate = 0.00005
 
         self.layer_sizes = layer_sizes
         if model_path:
@@ -44,11 +41,13 @@ class RLAgent:
     def get_predictions(self, state, legal_mask):
         self.num_predicts += 1 # More accurate than game.half_turns
 
-        state = np.expand_dims(state, axis=0) # Batch dimension
         if np.random.rand() <= self.epsilon:
             act_values = np.random.rand(self.action_size)  # Exploration
         else:
+            state = np.expand_dims(state, axis=0) # Batch dimension
             act_values = self.model.predict(state, verbose=0)[0]  # All actions
+            if np.random.rand() < 0.0002:
+                print(act_values[legal_mask==1])
 
         # Illegal move filter
         act_values = np.where(legal_mask, act_values, -np.inf)
@@ -59,6 +58,10 @@ class RLAgent:
         self.action_memory = np.append(self.action_memory, action)
 
     def train_batch(self, states, actions, padding_mask):
+        example_index = np.random.randint(states.shape[0])
+        print("Example State:", states[example_index])
+        print("Example Action:", actions[example_index])
+        print("Example Padding Mask:", padding_mask[example_index])
         with tf.GradientTape() as tape:
             predictions = self.model(states, training=True)
             
@@ -74,7 +77,7 @@ class RLAgent:
 
     def save_model(self, model_path):
         if not model_path:
-            model_path = "C:/Users/Public/Documents/Python_Files/Splendor/RL/trained_agents/Player1_1024_512"
+            model_path = "C:/Users/Public/Documents/Python_Files/Splendor/RL/trained_agents/1024_512_512"
         os.makedirs(model_path, exist_ok=True)
         self.model.save(model_path)
         print(f"Saved the model at {model_path}")

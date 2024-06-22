@@ -6,10 +6,9 @@ from .deck import Deck
 
 
 class Board:
-    def __init__(self, num_players):
+    def __init__(self):
         # Gems
-        gems = 9 - (5-num_players) # TWO EXTRA GEMS FOR TRAINING
-        self.gems = np.array([gems, gems, gems, gems, gems, 5], dtype=int) # [white, blue, green, red, black, gold]
+        self.gems = np.array([6, 6, 6, 6, 6, 5], dtype=int) # [white, blue, green, red, black, gold]
 
         # Decks
         self.tier1 = Deck(0)
@@ -30,14 +29,8 @@ class Board:
             [self.tier1.draw() for _ in range(4)],
             [self.tier2.draw() for _ in range(4)],
             [self.tier3.draw() for _ in range(4)], 
-            [self.nobles.draw() for _ in range(num_players+1)]
+            [self.nobles.draw() for _ in range(3)]
         ]
-    
-    def get_card_by_id(self, card_id):
-        for tier in self.cards:
-            for card in tier:
-                if card and card.id == card_id:
-                    return card
                 
     def take_or_return_gems(self, gems_to_change):
         self.gems -= np.pad(gems_to_change, (0, 6-len(gems_to_change)))
@@ -78,16 +71,16 @@ class Board:
         return {'gems': self.gems.tolist(), 'cards': card_dict}
         
     def to_vector(self):
-        tier_vector = [
+        tier_vector = [ # 11*4*3
             card.vector if card else [0] * 11
             for tier in self.cards[:3]
             for card in tier
         ]
         
-        nobles_vector = [
+        nobles_vector = [ # 6*3
             card.vector[5:] if card else [0] * 6
             for card in self.cards[3]
         ]
 
-        state_vector = np.concatenate((self.gems, *tier_vector, *nobles_vector))
-        return state_vector # length 156
+        state_vector = np.concatenate((*tier_vector, *nobles_vector)) # No longer including self.gems
+        return state_vector # length 150, UPDATE STATE_OFFSET IF THIS CHANGES
