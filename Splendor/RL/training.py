@@ -35,7 +35,7 @@ def debug_game(model_path=None, layer_sizes=None, log_path=None):
             write_to_csv(list(game.active_player.rl_model.memory)[-2000:])
             break
 
-        print(f"Simulated game {episode}")
+        print(f"Simulated game {episode}, game length * 2: {game.half_turns}")
 
 def write_to_csv(memory):
         print("-------Writing to CSV------")
@@ -96,7 +96,7 @@ def find_fastest_game(model_path=None, layer_sizes=None, memory_path=None, appen
     import pickle
     fastest_memories = []
 
-    while len(fastest_memories) < 20:
+    while len(fastest_memories) < 8:
         # Players
         players = [
             ('Player1', RLAgent(model_path, layer_sizes)),
@@ -108,17 +108,14 @@ def find_fastest_game(model_path=None, layer_sizes=None, memory_path=None, appen
             game = Game(players)
             while not game.victor:
                 game.turn()
-            if game.half_turns < 70:
-                print(game.half_turns)
-                if game.half_turns < 61:
-                    for player in game.players:
-                        if player.victor:
-                            fastest_memories.append(player.rl_model.memory.copy())
-                            print(len(fastest_memories))
-                    found = True
-                else:
-                    for player in game.players:
-                        player.rl_model.memory.clear()
+            if game.half_turns < 66:
+                for player in game.players:
+                    if player.victor:
+                        fastest_memories.append(player.rl_model.memory.copy())
+                found = True
+            else:
+                for player in game.players:
+                    player.rl_model.memory.clear()
 
     flattened_memories = [item for sublist in fastest_memories for item in sublist]
 

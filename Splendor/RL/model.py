@@ -12,15 +12,6 @@ from keras.optimizers import Adam
 
 class RLAgent:
     def __init__(self, model_path=None, layer_sizes=None, memory_path=None, tensorboard_dir=None):
-        physical_devices = tf.config.list_physical_devices('GPU')
-        print(tf.config.experimental.get_memory_growth(physical_devices[0]))
-        try:
-            tf.config.experimental.set_memory_growth(physical_devices[0], True)
-            print("GPU mem growth set")
-        except:
-            print("Failed to set GPU mem growth")
-            pass
-
         self.state_size = 240 # Size of state vector
         self.action_size = 61 # Maximum number of actions 
 
@@ -28,7 +19,7 @@ class RLAgent:
         self.game_length = 0
         self.batch_size = 128
 
-        self.gamma = 0.99
+        self.gamma = 0.9
         self.epsilon = 1.0  # exploration rate
         self.epsilon_min = 0.04
         self.epsilon_decay = 0.99
@@ -46,10 +37,12 @@ class RLAgent:
         if tensorboard_dir:
             self.tensorboard = tf.summary.create_file_writer(tensorboard_dir)
             self.step = 0 # For tensorboard
+            self.action_counts = np.zeros(self.action_size)
 
     def _build_model(self, layer_sizes):
         model = Sequential()
-        model.add(Dense(layer_sizes[0], input_dim=self.state_size, activation='relu'))
+        model.add(tf.keras.layers.Input(shape=(self.state_size,)))
+        model.add(Dense(layer_sizes[0], activation='relu'))
         for size in layer_sizes[1:]:
             model.add(Dense(size, activation='relu'))
         model.add(Dense(self.action_size, activation='linear'))
@@ -72,11 +65,9 @@ class RLAgent:
         self.model.optimizer.learning_rate.assign(new_lr)
         self.lr = new_lr
 
-    def log_weights(self):
-        with self.tensorboard.as_default():
-            for layer in self.model.layers:
-                weights = layer.get_weights()[0]
-                tf.summary.histogram(layer.name + '_weights', weights, step=self.step)
+        if self.tensorboard:
+            with self.tensorboard.as_default():
+                tf.summary.scalar('learning_rate', self.lr, step=self.step)
 
     def get_predictions(self, state, legal_mask):
         state = tf.reshape(state, [1, self.state_size])
@@ -89,6 +80,7 @@ class RLAgent:
 
         # Illegal move filter
         act_values = np.where(legal_mask, act_values, -np.inf) # Compatible with graph?
+
         return act_values
 
     def remember(self, state, action, reward, next_state, done):
@@ -117,12 +109,31 @@ class RLAgent:
 
         # Fit
         history = self.model.fit(states, target_qs, batch_size=256, epochs=1, verbose=0)
-        print("Batch loss:", history.history['loss'][0])
 
-        # Log weights
+        # Log
         if self.tensorboard:
             self.step += 1
-            self.log_weights()
+            step = self.step
+            with self.tensorboard.as_default():
+                # Batch loss
+                batch_loss = history.history['loss'][0]
+                tf.summary.scalar('batch_loss', batch_loss, step=step)
+
+                # Q-values over time
+                for action in range(self.action_size):
+                    average_qs = np.mean(qs, axis=0)
+                    tf.summary.scalar(f"Q_over_time/action_{action}", average_qs[action], step=step)
+                
+                tf.summary.scalar('avg_reward', tf.reduce_mean(rewards), step=step)
+                tf.summary.scalar('avg_q', tf.reduce_mean(qs), step=step)
+
+                # Actions histogram                
+                tf.summary.histogram('action_hist', actions, step=step)
+                
+                # Weights
+                for layer in self.model.layers:
+                    weights = layer.get_weights()[0]
+                    tf.summary.histogram(layer.name + '_weights', weights, step=step)
 
     def replay(self):
         # Training twice for now

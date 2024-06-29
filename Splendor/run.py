@@ -20,9 +20,9 @@ if __name__ == "__main__":
 
     memory_path = "/workspace/RL/memories.pkl"
 
-    # ddqn_loop(model_path=None, 
-    #           layer_sizes=layer_sizes, 
-    #           memory_path=memory_path, 
-    #           tensorboard_dir=tensorboard_dir)
+    ddqn_loop(model_path=None, 
+              layer_sizes=layer_sizes, 
+              memory_path=memory_path, 
+              tensorboard_dir=tensorboard_dir)
     # debug_game(layer_sizes=layer_sizes, log_path=log_path)
-    find_fastest_game(model_path=None, layer_sizes=layer_sizes, memory_path=memory_path, append_to_previous=False)
+    # find_fastest_game(model_path=None, layer_sizes=layer_sizes, memory_path=memory_path, append_to_previous=False)
