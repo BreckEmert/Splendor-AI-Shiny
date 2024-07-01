@@ -19,10 +19,10 @@ if __name__ == "__main__":
     model_path = os.path.join(base_dir, "RL", "trained_agents", f"{layer_sizes_str}.keras")
     model_path = "/workspace/RL/trained_agents/model.keras"
 
-    ddqn_loop(model_path=None, 
-              layer_sizes=layer_sizes, 
-              memories=True, 
-              log_path=log_path, 
-              tensorboard_dir=tensorboard_dir)
-    # debug_game(layer_sizes=layer_sizes, memories=True, log_path=log_path)
+    # ddqn_loop(model_path=model_path, 
+    #           layer_sizes=layer_sizes, 
+    #           memories=True, 
+    #           log_path=log_path, 
+    #           tensorboard_dir=tensorboard_dir)
+    debug_game(layer_sizes=layer_sizes, memories=True, log_path=log_path)
     # find_fastest_game(model_path=None, layer_sizes=layer_sizes, append_to_previous=False)

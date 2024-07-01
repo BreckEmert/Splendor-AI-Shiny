@@ -19,22 +19,22 @@ def debug_game(model_path=None, layer_sizes=None, memories=False, log_path=None)
     ]
 
     game = Game(players)
-    for episode in range(3):
+    for episode in range(10_000):
         # Enable logging for all games
-        log_state = open(os.path.join(log_path, "game_states", f"states_episode_{episode}.json"), 'w')
-        log_move = open(os.path.join(log_path, "moves", f"moves_episode_{episode}.json"), 'w')
+        # log_state = open(os.path.join(log_path, "game_states", f"states_episode_{episode}.json"), 'w')
+        # log_move = open(os.path.join(log_path, "moves", f"moves_episode_{episode}.json"), 'w')
 
         game.reset()
         while not game.victor:
             game.turn()
-            json.dump(game.get_state(), log_state)
-            log_state.write('\n')
-            log_move.write(str(game.active_player.chosen_move) + '\n') # Disabled for ddqn
+            # json.dump(game.get_state(), log_state)
+            # log_state.write('\n')
+            # log_move.write(str(game.active_player.chosen_move) + '\n') # Disabled for ddqn
 
-        if episode == 100:
-            print(len(game.active_player.rl_model.memory))
-            write_to_csv(list(game.active_player.rl_model.memory)[-2000:])
-            break
+        # if episode == 100:
+        #     print(len(game.active_player.rl_model.memory))
+        #     write_to_csv(list(game.active_player.rl_model.memory)[-2000:])
+        #     break
 
         # print(f"Simulated game {episode}, game length * 2: {game.half_turns}")
 
@@ -74,7 +74,7 @@ def ddqn_loop(model_path=None, layer_sizes=None, memories=None, log_path=None, t
     game = Game(players)
     game_lengths = []
 
-    for episode in range(10_000):
+    for episode in range(500):
         game.reset()
 
         # Enable logging for all games
@@ -111,7 +111,7 @@ def find_fastest_game(model_path=None, layer_sizes=None, append_to_previous=Fals
     import pickle
     fastest_memories = []
 
-    while len(fastest_memories) < 1:
+    while len(fastest_memories) < 40:
         # Players
         players = [
             ('Player1', RLAgent(model_path, layer_sizes)),
@@ -122,13 +122,13 @@ def find_fastest_game(model_path=None, layer_sizes=None, append_to_previous=Fals
         while not found:
             game = Game(players)
 
-            # Initialize a fake memory for rememeber() logic purposes
+            # Initialize a fake memory for remember() logic purposes
             for player in game.players:
                 player.rl_model.memory.append([None, None, None, None, None, None])
 
             while not game.victor:
                 game.turn()
-            if game.half_turns < 69:
+            if game.half_turns < 65:
                 for player in game.players:
                     if player.victor:
                         fastest_memories.append(list(player.rl_model.memory.copy())[1:])

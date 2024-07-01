@@ -31,8 +31,8 @@ class Player:
 
     def choose_discard(self, state, player_gems, progress=0, reward=0, move_index=None):
         # Set legal mask to only legal discards
-        legal_mask = np.zeros(61, dtype=int)
-        legal_mask[10:15] = player_gems[:5]
+        legal_mask = np.zeros(61, dtype=bool)
+        legal_mask[10:15] = player_gems[:5] > 0
 
         if not move_index:
             # Call the model to choose a discard
@@ -47,7 +47,7 @@ class Player:
         next_state = state.copy()
         next_state[gem_index+self.state_offset] -= 0.25
         state[195] = 0.2*progress # 0.2 * (moves remaining+1), indicating progression through loop
-        self.rl_model.remember([state.copy(), move_index, reward, next_state.copy(), False], legal_mask.copy())
+        self.rl_model.remember([state.copy(), move_index, reward, next_state.copy(), 1], legal_mask.copy())
 
         # Update player in the game state (not board anymore)
         state = next_state.copy() # Do we need to do .copy()
@@ -56,8 +56,8 @@ class Player:
     
     def choose_take(self, state, available_gems, progress, reward=0, take_index=None):
         # Set legal mask to only legal takes
-        legal_mask = np.zeros(61, dtype=int)
-        legal_mask[:5] = available_gems
+        legal_mask = np.zeros(61, dtype=bool)
+        legal_mask[:5] = available_gems > 0
 
         if not take_index:
             # Call the model to choose a take
@@ -71,7 +71,7 @@ class Player:
         next_state = state.copy()
         next_state[take_index+self.state_offset] += 0.25
         state[195] = progress # 0.2 * (moves remaining+1), indicating progression through loop
-        self.rl_model.remember([state.copy(), take_index, reward, next_state.copy(), False], legal_mask.copy())
+        self.rl_model.remember([state.copy(), take_index, reward, next_state.copy(), 1], legal_mask.copy())
 
         return take, next_state
 
@@ -127,7 +127,7 @@ class Player:
 
             # Legal tokens to spend
             legal_mask[10:15] = (gems*cost != 0)[:5] # Can only spend gems where card cost remains
-            legal_mask[60] = 1 if gems[5] else 0 # Enable spending gold as a legal move
+            legal_mask[60] = True if gems[5] else False # Enable spending gold as a legal move
 
             # Predict token to spend
             rl_moves = self.rl_model.get_predictions(state, legal_mask)
@@ -137,7 +137,7 @@ class Player:
             # Remember
             next_state = state.copy()
             next_state[gem_index+self.state_offset] -= 0.25
-            self.rl_model.remember([state.copy(), move_index, 0, next_state.copy(), False], legal_mask.copy())
+            self.rl_model.remember([state.copy(), move_index, 0, next_state.copy(), 1], legal_mask.copy())
 
             # Update player in game state
             state = next_state.copy()
@@ -216,30 +216,30 @@ class Player:
         return legal_moves
     
     def legal_to_vector(self, legal_moves):
-        legal_mask = np.zeros(61, dtype=int)
+        legal_mask = np.zeros(61, dtype=bool)
         for move, details in legal_moves:
             tier, card_index = details
             match move:
                 case 'take':
                     gem, amount = details # Overriding tier and card_index
                     if amount == 1:
-                        legal_mask[gem] = 1
+                        legal_mask[gem] = True
                     elif amount == 2:
-                        legal_mask[gem+5] = 1
+                        legal_mask[gem+5] = True
                     elif amount == -1:
-                        legal_mask[gem+10] = 1
+                        legal_mask[gem+10] = True
                 case 'buy':
-                    legal_mask[15 + 4*tier + card_index] = 1
+                    legal_mask[15 + 4*tier + card_index] = True
                 case 'buy reserved':
-                    legal_mask[27 + card_index] = 1
+                    legal_mask[27 + card_index] = True
                 case 'buy with gold':
-                    legal_mask[30 + 4*tier + card_index] = 1
+                    legal_mask[30 + 4*tier + card_index] = True
                 case 'buy reserved with gold':
-                    legal_mask[42 + card_index] = 1
+                    legal_mask[42 + card_index] = True
                 case 'reserve':
-                    legal_mask[45 + 4*tier + card_index] = 1
+                    legal_mask[45 + 4*tier + card_index] = True
                 case 'reserve top':
-                    legal_mask[57 + tier] = 1
+                    legal_mask[57 + tier] = True
 
         return legal_mask
     
@@ -255,7 +255,7 @@ class Player:
                 gem_index = move_index % 5
                 next_state = state.copy()
                 next_state[gem_index+self.state_offset] += 0.5
-                self.rl_model.remember([state.copy(), move_index, -2/15, next_state.copy(), False], legal_mask.copy())
+                self.rl_model.remember([state.copy(), move_index, -2/15, next_state.copy(), 1], legal_mask.copy())
 
                 chosen_gems = np.zeros(6, dtype=int)
                 chosen_gems[gem_index] = 2
@@ -279,14 +279,15 @@ class Player:
 
             if self.points+points >= 15:
                 reward += 10
-                self.rl_model.remember([state.copy(), move_index, reward, state.copy(), True], legal_mask.copy())
+                self.rl_model.remember([state.copy(), move_index, reward, state.copy(), 0], legal_mask.copy())
+                self.rl_model.memory[-1].append(legal_mask.copy())
                 self.victor = True
                 return None
 
             next_state = state.copy()
             offset = 11 * (4*tier + card_index)
             next_state[offset:offset+11] = board.deck_mapping[tier].peek_vector()
-            self.rl_model.remember([state.copy(), move_index, reward, next_state.copy(), False], legal_mask.copy())
+            self.rl_model.remember([state.copy(), move_index, reward, next_state.copy(), 1], legal_mask.copy())
             
             if move_index < 27:
                 move = ('buy', (tier, card_index))
@@ -312,7 +313,7 @@ class Player:
             # Remember
             next_state = state.copy()
             next_state[offset:offset+11] = board.deck_mapping[tier].peek_vector()
-            self.rl_model.remember([state.copy(), move_index, -2/15, next_state.copy(), False], legal_mask.copy())
+            self.rl_model.remember([state.copy(), move_index, -2/15, next_state.copy(), 1], legal_mask.copy())
         
         return move
     
@@ -322,6 +323,7 @@ class Player:
         rl_moves = self.rl_model.get_predictions(state, legal_mask)
         
         self.move_index = np.argmax(rl_moves)
+        print("player.choose_move move index:", self.move_index)
         self.chosen_move = self.vector_to_details(state, board, legal_mask, self.move_index)
         return self.chosen_move
     

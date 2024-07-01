@@ -19,7 +19,7 @@ class RLAgent:
         self.game_length = 0
         self.batch_size = 128
 
-        self.gamma = 1 # 0.1**(1/25)
+        self.gamma = 0.99 # 0.1**(1/25)
         self.epsilon = 1.0  # exploration rate
         self.epsilon_min = 0.04
         self.epsilon_decay = 0.99
@@ -84,8 +84,6 @@ class RLAgent:
             act_values = np.random.rand(self.action_size)  # Exploration
         else:
             act_values = self.model.predict(state, verbose=0)[0]  # All actions
-            # if np.random.rand() < 0.0004:
-            #     print(act_values[legal_mask==1])
 
         # Illegal move filter
         act_values = np.where(legal_mask, act_values, -np.inf) # Compatible with graph?
@@ -102,22 +100,27 @@ class RLAgent:
         actions = tf.convert_to_tensor([mem[1] for mem in batch], dtype=tf.int32) # Int8 or 16?
         rewards = tf.convert_to_tensor([mem[2] for mem in batch], dtype=tf.float32)
         next_states = tf.convert_to_tensor([mem[3] for mem in batch], dtype=tf.float32)
-        dones = tf.convert_to_tensor([mem[4] for mem in batch], dtype=bool) # Int8 or 16?
-        legal_masks = tf.convert_to_tensor([mem[5] for mem in batch], dtype=bool)
+        dones = tf.convert_to_tensor([mem[4] for mem in batch], dtype=tf.float32)
+        legal_masks = tf.convert_to_tensor([mem[5] for mem in batch], dtype=tf.bool)
 
+        # Calculate this turn's qs with primary model
         qs = self.model.predict(states, verbose=0)
-        target_qs = qs.copy()
-        next_qs = self.model.predict(next_states, verbose=0)
-        next_targets = self.target_model.predict(next_states, verbose=0)
-        
 
-        # Set q-values
-        for i in range(len(batch)):
-            if dones[i]:
-                target_qs[i][actions[i]] = rewards[i]
-            else:
-                best_next_q = tf.argmax(next_qs[i])
-                target_qs[i][actions[i]] = rewards[i] + self.gamma*next_targets[i][best_next_q]
+        # Predict next turn's actions with primary model
+        next_actions = self.model.predict(next_states, verbose=0)
+        next_actions = tf.where(legal_masks, next_actions, tf.fill(next_actions.shape, -np.inf))
+        next_actions = tf.argmax(next_actions, axis=1, output_type=tf.int32)
+        next_actions = tf.stack([tf.range(len(next_actions), dtype=tf.int32), next_actions], axis=1)
+
+        # Calculate next turn's qs with target model
+        next_qs = self.target_model.predict(next_states, verbose=0)
+        next_qs = tf.where(legal_masks, next_qs, tf.fill(next_qs.shape, -np.inf))
+        next_qs = tf.gather_nd(next_qs, next_actions)
+
+        # Ground qs with reward and value trajectory
+        targets = rewards + dones * self.gamma * next_qs
+        actions_indices = tf.stack([tf.range(len(actions), dtype=tf.int32), actions], axis=1)
+        target_qs = tf.tensor_scatter_nd_update(qs, actions_indices, targets)
 
         # Fit
         history = self.model.fit(states, target_qs, batch_size=256, epochs=1, verbose=0)
@@ -130,13 +133,14 @@ class RLAgent:
                 # Grouped cards
                 tf.summary.scalar('Training Metrics/batch_loss', history.history['loss'][0], step=step)
                 tf.summary.scalar('Training Metrics/avg_reward', tf.reduce_mean(rewards), step=step)
-                tf.summary.scalar('Training Metrics/avg_q', tf.reduce_mean(qs), step=step)
+                legal_qs = tf.where(tf.math.is_finite(qs), qs, tf.zeros_like(qs))
+                tf.summary.scalar('Training Metrics/avg_q', tf.reduce_mean(legal_qs), step=step)
                 tf.summary.histogram('Training Metrics/action_hist', actions, step=step)
 
                 # Q-values over time
                 for action in range(self.action_size):
-                    average_qs = np.mean(qs, axis=0)
-                    tf.summary.scalar(f"action_qs/action_{action}", average_qs[action], step=step)
+                    average_qs = np.mean(legal_qs[:, action], axis=0)
+                    tf.summary.scalar(f"action_qs/action_{action}", average_qs, step=step)
                 
                 # Weights
                 for layer in self.model.layers:
@@ -146,9 +150,6 @@ class RLAgent:
 
     def replay(self):
         # Training twice for now
-        batch = sample(self.memory, self.batch_size)
-        self._batch_train(batch)
-        
         batch = sample(self.memory, self.batch_size)
         self._batch_train(batch)
         
