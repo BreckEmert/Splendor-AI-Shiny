@@ -5,21 +5,21 @@ from random import sample
 
 import numpy as np
 import tensorflow as tf
-from keras.layers import Dense
+from keras.layers import Input, Dense
 from keras.models import load_model, Sequential
 from keras.optimizers import Adam
 
 
 class RLAgent:
-    def __init__(self, model_path=None, layer_sizes=None, memory_path=None, tensorboard_dir=None):
-        self.state_size = 240 # Size of state vector
+    def __init__(self, model_path=None, layer_sizes=None, memories=None, tensorboard_dir=None):
+        self.state_size = 241 # Size of state vector
         self.action_size = 61 # Maximum number of actions 
 
-        self.memory = self.load_memories(memory_path) if memory_path else deque(maxlen=10_000)
+        self.memory = self.load_memories() if memories else deque(maxlen=10_000)
         self.game_length = 0
         self.batch_size = 128
 
-        self.gamma = 0.9
+        self.gamma = 1 # 0.1**(1/25)
         self.epsilon = 1.0  # exploration rate
         self.epsilon_min = 0.04
         self.epsilon_decay = 0.99
@@ -36,24 +36,33 @@ class RLAgent:
 
         if tensorboard_dir:
             self.tensorboard = tf.summary.create_file_writer(tensorboard_dir)
-            self.step = 0 # For tensorboard
             self.action_counts = np.zeros(self.action_size)
+            self.step = 0
 
     def _build_model(self, layer_sizes):
-        model = Sequential()
-        model.add(tf.keras.layers.Input(shape=(self.state_size,)))
-        model.add(Dense(layer_sizes[0], activation='relu'))
-        for size in layer_sizes[1:]:
-            model.add(Dense(size, activation='relu'))
-        model.add(Dense(self.action_size, activation='linear'))
+        state_input = Input(shape=(self.state_size, ))
+
+        categorizer1 = Dense(layer_sizes[0], activation='relu', name='categorizer1')(state_input)
+        categorizer2 = Dense(layer_sizes[1], activation='relu', name='categorizer2')(categorizer1)
+        category = Dense(3, activation='softmax', name='category')(categorizer2)
+
+        state_w_category = tf.keras.layers.concatenate([state_input, category])
+
+        # Reuse via categorizer1(state_w_category)?
+        specific1 = Dense(layer_sizes[2], activation='relu', name='specific1')(state_w_category)
+        specific2 = Dense(layer_sizes[3], activation='relu', name='specific2')(specific1)
+        move = Dense(self.action_size, activation='linear', name='move')(specific2)
+
+        model = tf.keras.Model(inputs=state_input, outputs=move)
         model.compile(loss='mse', optimizer=Adam(learning_rate=self.lr))
         return model
     
-    def load_memories(self, memory_path):
+    def load_memories(self):
+        print("Loading existing memories")
         import pickle
-        with open(memory_path, 'rb') as f:
+        with open("/workspace/RL/memories.pkl", 'rb') as f:
             flattened_memories = pickle.load(f)
-        loaded_memories = [tuple(mem) for mem in flattened_memories]
+        loaded_memories = [mem for mem in flattened_memories]
         return deque(loaded_memories, maxlen=10_000)
 
     def update_target_model(self):
@@ -67,7 +76,7 @@ class RLAgent:
 
         if self.tensorboard:
             with self.tensorboard.as_default():
-                tf.summary.scalar('learning_rate', self.lr, step=self.step)
+                tf.summary.scalar('Training Metrics/learning_rate', self.lr, step=self.step)
 
     def get_predictions(self, state, legal_mask):
         state = tf.reshape(state, [1, self.state_size])
@@ -83,8 +92,9 @@ class RLAgent:
 
         return act_values
 
-    def remember(self, state, action, reward, next_state, done):
-        self.memory.append((state, action, reward, next_state, done))
+    def remember(self, memory, legal_mask):
+        self.memory.append(memory)
+        self.memory[-2].append(legal_mask)
         self.game_length += 1
 
     def _batch_train(self, batch):
@@ -93,11 +103,13 @@ class RLAgent:
         rewards = tf.convert_to_tensor([mem[2] for mem in batch], dtype=tf.float32)
         next_states = tf.convert_to_tensor([mem[3] for mem in batch], dtype=tf.float32)
         dones = tf.convert_to_tensor([mem[4] for mem in batch], dtype=bool) # Int8 or 16?
+        legal_masks = tf.convert_to_tensor([mem[5] for mem in batch], dtype=bool)
 
         qs = self.model.predict(states, verbose=0)
         target_qs = qs.copy()
         next_qs = self.model.predict(next_states, verbose=0)
         next_targets = self.target_model.predict(next_states, verbose=0)
+        
 
         # Set q-values
         for i in range(len(batch)):
@@ -115,25 +127,22 @@ class RLAgent:
             self.step += 1
             step = self.step
             with self.tensorboard.as_default():
-                # Batch loss
-                batch_loss = history.history['loss'][0]
-                tf.summary.scalar('batch_loss', batch_loss, step=step)
+                # Grouped cards
+                tf.summary.scalar('Training Metrics/batch_loss', history.history['loss'][0], step=step)
+                tf.summary.scalar('Training Metrics/avg_reward', tf.reduce_mean(rewards), step=step)
+                tf.summary.scalar('Training Metrics/avg_q', tf.reduce_mean(qs), step=step)
+                tf.summary.histogram('Training Metrics/action_hist', actions, step=step)
 
                 # Q-values over time
                 for action in range(self.action_size):
                     average_qs = np.mean(qs, axis=0)
-                    tf.summary.scalar(f"Q_over_time/action_{action}", average_qs[action], step=step)
-                
-                tf.summary.scalar('avg_reward', tf.reduce_mean(rewards), step=step)
-                tf.summary.scalar('avg_q', tf.reduce_mean(qs), step=step)
-
-                # Actions histogram                
-                tf.summary.histogram('action_hist', actions, step=step)
+                    tf.summary.scalar(f"action_qs/action_{action}", average_qs[action], step=step)
                 
                 # Weights
                 for layer in self.model.layers:
-                    weights = layer.get_weights()[0]
-                    tf.summary.histogram(layer.name + '_weights', weights, step=step)
+                    if hasattr(layer, 'kernel') and layer.kernel is not None:
+                        weights = layer.get_weights()[0]
+                        tf.summary.histogram('Model Weights/'+ layer.name +'_weights', weights, step=step)
 
     def replay(self):
         # Training twice for now
